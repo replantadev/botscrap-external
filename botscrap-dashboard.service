@@ -1,0 +1,26 @@
+# Archivo de servicio systemd para BotScrap External Dashboard
+# Copiar a: /etc/systemd/system/botscrap-dashboard.service
+#
+# Comandos:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable botscrap-dashboard
+#   sudo systemctl start botscrap-dashboard
+#   sudo systemctl status botscrap-dashboard
+#   sudo journalctl -u botscrap-dashboard -f
+
+[Unit]
+Description=BotScrap External Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/home/user/botscrap_external
+Environment="PATH=/home/user/botscrap_external/venv/bin"
+ExecStart=/home/user/botscrap_external/venv/bin/gunicorn webapp:app --bind 0.0.0.0:5000 --workers 2 --threads 2 --timeout 120
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

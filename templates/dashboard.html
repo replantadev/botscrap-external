@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - BotScrap External</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #334155;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header h1 span {
+            color: #4ade80;
+        }
+        .version-badge {
+            font-size: 11px;
+            padding: 4px 8px;
+            background: #334155;
+            border-radius: 4px;
+            color: #94a3b8;
+            font-weight: normal;
+        }
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-secondary {
+            background: #334155;
+            color: #e2e8f0;
+        }
+        .btn-secondary:hover {
+            background: #475569;
+        }
+        .btn-danger {
+            background: #dc2626;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: #fff;
+        }
+        .btn-primary:hover {
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        .btn-update {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: #000;
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-update.has-updates::after {
+            content: '';
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 12px;
+            height: 12px;
+            background: #ef4444;
+            border-radius: 50%;
+            animation: pulse-dot 2s infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .status-bar {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 16px 24px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .status-dot.online {
+            background: #4ade80;
+            box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+        }
+        .status-dot.offline {
+            background: #64748b;
+        }
+        /* Update Panel */
+        .update-panel {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .update-panel.has-updates {
+            border-color: #f59e0b;
+        }
+        .update-header {
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            cursor: pointer;
+        }
+        .update-header:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        .update-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+        }
+        .update-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .update-badge.available {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+        .update-badge.up-to-date {
+            background: rgba(74, 222, 128, 0.2);
+            color: #4ade80;
+        }
+        .update-body {
+            padding: 20px;
+            display: none;
+        }
+        .update-body.open {
+            display: block;
+        }
+        .commits-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+        }
+        .commit-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: #0f172a;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        .commit-hash {
+            font-family: monospace;
+            color: #60a5fa;
+            font-size: 13px;
+        }
+        .commit-message {
+            flex: 1;
+            font-size: 14px;
+        }
+        .commit-meta {
+            font-size: 12px;
+            color: #64748b;
+        }
+        .update-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .update-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #fbbf24;
+        }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-overlay.show {
+            display: flex;
+        }
+        .modal {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .modal-body {
+            margin-bottom: 20px;
+            color: #94a3b8;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+        .bots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .bot-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .bot-header {
+            padding: 20px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .bot-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .bot-icon {
+            font-size: 28px;
+        }
+        .bot-name {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .bot-type {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+        }
+        .bot-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .bot-status.running {
+            background: rgba(74, 222, 128, 0.2);
+            color: #4ade80;
+        }
+        .bot-status.stopped {
+            background: rgba(100, 116, 139, 0.2);
+            color: #94a3b8;
+        }
+        .bot-status.error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+        .bot-body {
+            padding: 20px;
+        }
+        .bot-form {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .form-row {
+            display: flex;
+            gap: 12px;
+        }
+        .form-row input, .form-row select {
+            flex: 1;
+            padding: 10px 14px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 14px;
+        }
+        .form-row input:focus, .form-row select:focus {
+            outline: none;
+            border-color: #4ade80;
+        }
+        .bot-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .btn-start {
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            color: #000;
+            flex: 1;
+        }
+        .btn-start:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
+        }
+        .btn-start:disabled {
+            background: #334155;
+            color: #64748b;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .btn-stop {
+            background: #dc2626;
+            color: #fff;
+        }
+        .btn-stop:hover {
+            background: #b91c1c;
+        }
+        .bot-logs {
+            margin-top: 16px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .bot-logs pre {
+            padding: 12px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            color: #94a3b8;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .bot-logs .log-line {
+            padding: 2px 0;
+        }
+        .bot-logs .log-success {
+            color: #4ade80;
+        }
+        .bot-logs .log-error {
+            color: #f87171;
+        }
+        .bot-logs .log-info {
+            color: #60a5fa;
+        }
+        .config-panel {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .config-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+        .config-item {
+            background: #0f172a;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .config-label {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+        .config-value {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .config-value.success {
+            color: #4ade80;
+        }
+        .config-value.warning {
+            color: #fbbf24;
+        }
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .toast.success {
+            background: #166534;
+            color: #4ade80;
+        }
+        .toast.error {
+            background: #991b1b;
+            color: #fca5a5;
+        }
+        .toast.warning {
+            background: #92400e;
+            color: #fbbf24;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .running .bot-status {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>
+            🤖 Bot<span>Scrap</span> External
+            <span class="version-badge" id="current-version">v--</span>
+        </h1>
+        <div class="header-actions">
+            <button class="btn btn-update" id="btn-updates" onclick="toggleUpdatePanel()">
+                🔄 Updates
+            </button>
+            <button class="btn btn-secondary" onclick="testConnection()">🔌 Test Conexión</button>
+            <button class="btn btn-secondary" onclick="refreshStatus()">🔄 Actualizar</button>
+            <a href="{{ access_path }}/logout" class="btn btn-danger">Salir</a>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-dot" id="staffkit-status"></span>
+                <span>StaffKit</span>
+            </div>
+            <div class="status-item">
+                <span class="status-dot" id="git-status"></span>
+                <span>Git: <span id="git-branch">--</span></span>
+            </div>
+            <div class="status-item">
+                <span id="last-update">Última actualización: --</span>
+            </div>
+        </div>
+
+        <!-- Update Panel (colapsable) -->
+        <div class="update-panel" id="update-panel">
+            <div class="update-header" onclick="toggleUpdatePanel()">
+                <div class="update-title">
+                    <span>📦 Sistema de Actualizaciones</span>
+                    <span class="update-badge up-to-date" id="update-badge">Actualizado</span>
+                </div>
+                <span id="update-arrow">▼</span>
+            </div>
+            <div class="update-body" id="update-body">
+                <div id="update-content">
+                    <p style="color: #64748b">Haz clic en "Verificar actualizaciones" para comprobar si hay nuevas versiones.</p>
+                </div>
+                <div class="update-actions">
+                    <button class="btn btn-secondary" onclick="checkUpdates()">
+                        🔍 Verificar actualizaciones
+                    </button>
+                    <button class="btn btn-primary" id="btn-apply-update" onclick="applyUpdate()" style="display: none">
+                        ⬇️ Aplicar actualización
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bots Grid -->
+        <div class="bots-grid">
+            <!-- Direct Bot -->
+            <div class="bot-card" id="card-direct">
+                <div class="bot-header">
+                    <div class="bot-title">
+                        <span class="bot-icon">🎯</span>
+                        <div>
+                            <div class="bot-name">Direct Bot</div>
+                            <div class="bot-type">Búsqueda Google</div>
+                        </div>
+                    </div>
+                    <span class="bot-status stopped" id="status-direct">Detenido</span>
+                </div>
+                <div class="bot-body">
+                    <div class="bot-form">
+                        <div class="form-row">
+                            <input type="text" id="direct-query" placeholder="Query de búsqueda (ej: agencia wordpress madrid)">
+                        </div>
+                        <div class="form-row">
+                            <input type="number" id="direct-limit" placeholder="Límite" value="10" min="1" max="50">
+                        </div>
+                    </div>
+                    <div class="bot-actions">
+                        <button class="btn btn-start" onclick="startBot('direct')">▶ Iniciar</button>
+                        <button class="btn btn-stop" onclick="stopBot('direct')" style="display:none">⏹ Detener</button>
+                    </div>
+                    <div class="bot-logs" id="logs-direct">
+                        <pre>Esperando ejecución...</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resentment Bot -->
+            <div class="bot-card" id="card-resentment">
+                <div class="bot-header">
+                    <div class="bot-title">
+                        <span class="bot-icon">😤</span>
+                        <div>
+                            <div class="bot-name">Resentment Hunter</div>
+                            <div class="bot-type">Reviews Negativas</div>
+                        </div>
+                    </div>
+                    <span class="bot-status stopped" id="status-resentment">Detenido</span>
+                </div>
+                <div class="bot-body">
+                    <div class="bot-form">
+                        <div class="form-row">
+                            <select id="resentment-hosting">
+                                <option value="">-- Seleccionar Hosting --</option>
+                                <option value="hostinger">Hostinger</option>
+                                <option value="godaddy">GoDaddy</option>
+                                <option value="siteground">SiteGround</option>
+                                <option value="bluehost">Bluehost</option>
+                                <option value="ionos">IONOS</option>
+                                <option value="hostgator">HostGator</option>
+                                <option value="webempresa">Webempresa</option>
+                                <option value="dinahosting">Dinahosting</option>
+                                <option value="ovh">OVH</option>
+                                <option value="__all__">🔥 TODOS</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <input type="number" id="resentment-limit" placeholder="Límite" value="20" min="1" max="100">
+                        </div>
+                    </div>
+                    <div class="bot-actions">
+                        <button class="btn btn-start" onclick="startBot('resentment')">▶ Iniciar</button>
+                        <button class="btn btn-stop" onclick="stopBot('resentment')" style="display:none">⏹ Detener</button>
+                    </div>
+                    <div class="bot-logs" id="logs-resentment">
+                        <pre>Esperando ejecución...</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Social Bot -->
+            <div class="bot-card" id="card-social">
+                <div class="bot-header">
+                    <div class="bot-title">
+                        <span class="bot-icon">📡</span>
+                        <div>
+                            <div class="bot-name">Social Signals</div>
+                            <div class="bot-type">Redes Sociales</div>
+                        </div>
+                    </div>
+                    <span class="bot-status stopped" id="status-social">Detenido</span>
+                </div>
+                <div class="bot-body">
+                    <div class="bot-form">
+                        <div class="form-row">
+                            <select id="social-source">
+                                <option value="reddit">Reddit</option>
+                                <option value="twitter">Twitter (requiere API)</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <input type="number" id="social-limit" placeholder="Límite" value="15" min="1" max="50">
+                        </div>
+                    </div>
+                    <div class="bot-actions">
+                        <button class="btn btn-start" onclick="startBot('social')">▶ Iniciar</button>
+                        <button class="btn btn-stop" onclick="stopBot('social')" style="display:none">⏹ Detener</button>
+                    </div>
+                    <div class="bot-logs" id="logs-social">
+                        <pre>Esperando ejecución...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Panel -->
+        <div class="config-panel">
+            <div class="config-title">⚙️ Configuración Actual</div>
+            <div class="config-grid" id="config-grid">
+                <!-- Se llena con JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Modal de reinicio -->
+    <div class="modal-overlay" id="modal-restart">
+        <div class="modal">
+            <div class="modal-title">🔄 Reiniciar servidor</div>
+            <div class="modal-body">
+                La actualización se ha aplicado correctamente. Para que los cambios surtan efecto, es necesario reiniciar el servidor.
+                <br><br>
+                <strong>¿Deseas reiniciar ahora?</strong>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('modal-restart')">Más tarde</button>
+                <button class="btn btn-primary" onclick="restartServer()">Reiniciar ahora</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ACCESS_PATH = '{{ access_path }}';
+        let eventSources = {};
+        let updateInfo = null;
+
+        // Toast notifications
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // Modal
+        function showModal(id) {
+            document.getElementById(id).classList.add('show');
+        }
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('show');
+        }
+
+        // Toggle update panel
+        function toggleUpdatePanel() {
+            const body = document.getElementById('update-body');
+            const arrow = document.getElementById('update-arrow');
+            body.classList.toggle('open');
+            arrow.textContent = body.classList.contains('open') ? '▲' : '▼';
+        }
+
+        // Verificar actualizaciones
+        async function checkUpdates() {
+            const content = document.getElementById('update-content');
+            content.innerHTML = '<p><span class="spinner"></span> Verificando actualizaciones...</p>';
+            
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/updates/check`);
+                const data = await response.json();
+                updateInfo = data;
+                
+                document.getElementById('current-version').textContent = `v${data.current_version}`;
+                
+                const badge = document.getElementById('update-badge');
+                const btnUpdates = document.getElementById('btn-updates');
+                const btnApply = document.getElementById('btn-apply-update');
+                const panel = document.getElementById('update-panel');
+                
+                if (data.has_updates) {
+                    badge.textContent = `${data.commits_behind} pendientes`;
+                    badge.className = 'update-badge available';
+                    btnUpdates.classList.add('has-updates');
+                    btnApply.style.display = 'inline-flex';
+                    panel.classList.add('has-updates');
+                    
+                    let html = `
+                        <div class="update-warning">
+                            ⚠️ Hay ${data.commits_behind} commit(s) nuevos disponibles
+                        </div>
+                        <h4 style="margin-bottom: 12px">Cambios disponibles:</h4>
+                        <div class="commits-list">
+                    `;
+                    
+                    data.commits.forEach(commit => {
+                        html += `
+                            <div class="commit-item">
+                                <span class="commit-hash">${commit.short_hash}</span>
+                                <div>
+                                    <div class="commit-message">${commit.message}</div>
+                                    <div class="commit-meta">${commit.author} - ${commit.date}</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div>';
+                    content.innerHTML = html;
+                    
+                    showToast(`${data.commits_behind} actualización(es) disponible(s)`, 'warning');
+                } else {
+                    badge.textContent = 'Actualizado';
+                    badge.className = 'update-badge up-to-date';
+                    btnUpdates.classList.remove('has-updates');
+                    btnApply.style.display = 'none';
+                    panel.classList.remove('has-updates');
+                    
+                    content.innerHTML = `
+                        <p style="color: #4ade80">✅ Tu versión está actualizada</p>
+                        <p style="color: #64748b; margin-top: 8px">Versión actual: ${data.current_version}</p>
+                        <p style="color: #64748b">Última verificación: ${new Date(data.last_check).toLocaleString()}</p>
+                    `;
+                    
+                    showToast('Ya tienes la última versión', 'success');
+                }
+                
+            } catch (error) {
+                content.innerHTML = `<p style="color: #f87171">❌ Error verificando: ${error.message}</p>`;
+                showToast('Error verificando actualizaciones', 'error');
+            }
+        }
+
+        // Aplicar actualización
+        async function applyUpdate() {
+            if (!updateInfo || !updateInfo.has_updates) {
+                showToast('No hay actualizaciones disponibles', 'error');
+                return;
+            }
+            
+            const content = document.getElementById('update-content');
+            content.innerHTML = '<p><span class="spinner"></span> Aplicando actualización...</p>';
+            
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/updates/pull`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ force: true })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    content.innerHTML = `
+                        <p style="color: #4ade80">✅ ${data.message}</p>
+                        <p style="color: #64748b; margin-top: 8px">Nueva versión: ${data.new_version}</p>
+                    `;
+                    
+                    document.getElementById('btn-apply-update').style.display = 'none';
+                    document.getElementById('update-badge').textContent = 'Actualizado';
+                    document.getElementById('update-badge').className = 'update-badge up-to-date';
+                    document.getElementById('btn-updates').classList.remove('has-updates');
+                    document.getElementById('current-version').textContent = `v${data.new_version}`;
+                    
+                    showToast('Actualización aplicada correctamente', 'success');
+                    
+                    if (data.restart_required) {
+                        setTimeout(() => showModal('modal-restart'), 500);
+                    }
+                } else {
+                    content.innerHTML = `
+                        <p style="color: #f87171">❌ Error: ${data.error}</p>
+                        ${data.hint ? `<p style="color: #64748b; margin-top: 8px">${data.hint}</p>` : ''}
+                    `;
+                    showToast(data.error, 'error');
+                }
+                
+            } catch (error) {
+                content.innerHTML = `<p style="color: #f87171">❌ Error: ${error.message}</p>`;
+                showToast('Error aplicando actualización', 'error');
+            }
+        }
+
+        // Reiniciar servidor
+        async function restartServer() {
+            closeModal('modal-restart');
+            showToast('Reiniciando servidor...', 'warning');
+            
+            try {
+                await fetch(`${ACCESS_PATH}/api/restart`, { method: 'POST' });
+                setTimeout(() => window.location.reload(), 3000);
+            } catch (error) {
+                setTimeout(() => window.location.reload(), 3000);
+            }
+        }
+
+        // Cargar estado Git
+        async function loadGitStatus() {
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/updates/status`);
+                const data = await response.json();
+                
+                document.getElementById('git-branch').textContent = data.branch;
+                document.getElementById('git-status').className = 'status-dot online';
+                document.getElementById('current-version').textContent = `v${data.current_version}`;
+                
+            } catch (error) {
+                document.getElementById('git-status').className = 'status-dot offline';
+            }
+        }
+
+        // Actualizar estado
+        async function refreshStatus() {
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/status`);
+                const data = await response.json();
+                
+                ['direct', 'resentment', 'social'].forEach(bot => {
+                    const status = data[bot];
+                    const statusEl = document.getElementById(`status-${bot}`);
+                    const card = document.getElementById(`card-${bot}`);
+                    const startBtn = card.querySelector('.btn-start');
+                    const stopBtn = card.querySelector('.btn-stop');
+                    
+                    if (status.running) {
+                        statusEl.textContent = 'Ejecutando...';
+                        statusEl.className = 'bot-status running';
+                        card.classList.add('running');
+                        startBtn.style.display = 'none';
+                        stopBtn.style.display = 'block';
+                        startBtn.disabled = true;
+                        
+                        // Iniciar stream de logs si no existe
+                        if (!eventSources[bot]) {
+                            streamLogs(bot);
+                        }
+                    } else {
+                        statusEl.textContent = status.last_result === 'error' ? 'Error' : 'Detenido';
+                        statusEl.className = `bot-status ${status.last_result === 'error' ? 'error' : 'stopped'}`;
+                        card.classList.remove('running');
+                        startBtn.style.display = 'block';
+                        stopBtn.style.display = 'none';
+                        startBtn.disabled = false;
+                        
+                        // Cerrar stream si existe
+                        if (eventSources[bot]) {
+                            eventSources[bot].close();
+                            eventSources[bot] = null;
+                        }
+                    }
+                });
+                
+                document.getElementById('last-update').textContent = 
+                    `Última actualización: ${new Date().toLocaleTimeString()}`;
+                    
+            } catch (error) {
+                console.error('Error refreshing status:', error);
+            }
+        }
+
+        // Iniciar bot
+        async function startBot(botType) {
+            let args = [];
+            
+            if (botType === 'direct') {
+                const query = document.getElementById('direct-query').value;
+                const limit = document.getElementById('direct-limit').value;
+                if (!query) {
+                    showToast('Introduce una query de búsqueda', 'error');
+                    return;
+                }
+                args = ['--query', query, '--limit', limit];
+            } else if (botType === 'resentment') {
+                const hosting = document.getElementById('resentment-hosting').value;
+                const limit = document.getElementById('resentment-limit').value;
+                if (!hosting) {
+                    showToast('Selecciona un hosting', 'error');
+                    return;
+                }
+                if (hosting === '__all__') {
+                    args = ['--all-hostings', '--limit', limit];
+                } else {
+                    args = ['--hosting', hosting, '--limit', limit];
+                }
+            } else if (botType === 'social') {
+                const source = document.getElementById('social-source').value;
+                const limit = document.getElementById('social-limit').value;
+                args = ['--sources', source, '--limit', limit];
+            }
+            
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bot_type: botType, args: args })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    refreshStatus();
+                } else {
+                    showToast(data.error || data.message, 'error');
+                }
+            } catch (error) {
+                showToast('Error iniciando bot', 'error');
+            }
+        }
+
+        // Detener bot
+        async function stopBot(botType) {
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/stop`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bot_type: botType })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    refreshStatus();
+                } else {
+                    showToast(data.error || data.message, 'error');
+                }
+            } catch (error) {
+                showToast('Error deteniendo bot', 'error');
+            }
+        }
+
+        // Stream de logs
+        function streamLogs(botType) {
+            const logsEl = document.getElementById(`logs-${botType}`).querySelector('pre');
+            
+            const eventSource = new EventSource(`${ACCESS_PATH}/api/logs/${botType}/stream`);
+            eventSources[botType] = eventSource;
+            
+            logsEl.textContent = '';
+            
+            eventSource.onmessage = function(event) {
+                const line = event.data;
+                
+                // Colorear líneas
+                let className = '';
+                if (line.includes('✅') || line.includes('success')) {
+                    className = 'log-success';
+                } else if (line.includes('❌') || line.includes('error') || line.includes('Error')) {
+                    className = 'log-error';
+                } else if (line.includes('📊') || line.includes('INFO')) {
+                    className = 'log-info';
+                }
+                
+                const span = document.createElement('span');
+                span.className = `log-line ${className}`;
+                span.textContent = line + '\n';
+                logsEl.appendChild(span);
+                
+                // Auto-scroll
+                logsEl.parentElement.scrollTop = logsEl.parentElement.scrollHeight;
+            };
+            
+            eventSource.onerror = function() {
+                eventSource.close();
+                eventSources[botType] = null;
+            };
+        }
+
+        // Test conexión
+        async function testConnection() {
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/test-connection`);
+                const data = await response.json();
+                
+                const statusDot = document.getElementById('staffkit-status');
+                
+                if (data.success) {
+                    statusDot.className = 'status-dot online';
+                    showToast('Conexión con StaffKit OK', 'success');
+                } else {
+                    statusDot.className = 'status-dot offline';
+                    showToast(`Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast('Error probando conexión', 'error');
+            }
+        }
+
+        // Cargar configuración
+        async function loadConfig() {
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/config`);
+                const data = await response.json();
+                
+                const grid = document.getElementById('config-grid');
+                grid.innerHTML = '';
+                
+                const configs = [
+                    { label: 'StaffKit URL', value: data.staffkit_url, type: 'text' },
+                    { label: 'List ID', value: data.staffkit_list_id, type: 'text' },
+                    { label: 'Max Leads/Run', value: data.max_leads_per_run, type: 'text' },
+                    { label: 'Daily Limit', value: data.daily_limit, type: 'text' },
+                    { label: 'Google API', value: data.google_api, type: data.google_api.includes('✓') ? 'success' : 'warning' },
+                    { label: 'Telegram', value: data.telegram, type: data.telegram.includes('✓') ? 'success' : 'warning' },
+                ];
+                
+                configs.forEach(cfg => {
+                    const item = document.createElement('div');
+                    item.className = 'config-item';
+                    item.innerHTML = `
+                        <div class="config-label">${cfg.label}</div>
+                        <div class="config-value ${cfg.type}">${cfg.value}</div>
+                    `;
+                    grid.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Error loading config:', error);
+            }
+        }
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshStatus();
+            testConnection();
+            loadConfig();
+            loadGitStatus();
+            
+            // Auto-refresh cada 5 segundos
+            setInterval(refreshStatus, 5000);
+            
+            // Verificar actualizaciones cada 5 minutos
+            setInterval(checkUpdates, 5 * 60 * 1000);
+        });
+    </script>
+</body>
+</html>

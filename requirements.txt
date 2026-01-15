@@ -1,0 +1,32 @@
+# BotScrap External - Dependencies
+# Python 3.9+ required
+
+# Core
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+python-dotenv>=1.0.0
+lxml>=4.9.3
+
+# HTTP client moderno
+httpx>=0.25.0
+
+# DNS lookups
+dnspython>=2.4.0
+
+# Rate limiting y retry
+urllib3>=2.0.0
+tenacity>=8.2.0
+
+# CLI
+click>=8.1.0
+rich>=13.0.0
+
+# Web Dashboard
+Flask>=3.0.0
+gunicorn>=21.0.0
+
+# Telegram (opcional)
+python-telegram-bot>=20.6
+
+# Logging mejorado
+colorlog>=6.7.0
