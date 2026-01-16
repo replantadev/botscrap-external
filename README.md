@@ -5,15 +5,26 @@ Bot de generación de leads que se ejecuta en un VPS externo y envía datos a St
 ## 🎯 Características
 
 - **3 tipos de bots:**
-  - 🎯 **Direct Bot**: Búsqueda directa en Google de sitios WordPress
+  - 🎯 **Direct Bot**: Búsqueda directa en Google con validación completa
   - 😤 **Resentment Hunter**: Caza leads frustrados en Trustpilot/HostAdvice
   - 📡 **Social Signals**: Monitorea redes sociales buscando intención de compra
+
+- **✨ Validación y Enriquecimiento (Fase A):**
+  - 🔍 Detección de CMS (WordPress, Joomla, otros)
+  - ⚡ PageSpeed check (API o fallback rápido)
+  - 🌿 Detección de perfil ecológico
+  - 📍 Detección de ubicación (ES, CO, MX)
+  - 🏢 Detección de tipo de organización y sector
+  - 📧 Multi-email enrichment con priorización
+  - 🎯 Cálculo de prioridad de leads
 
 - **🖥️ Panel de Control Web:**
   - Dashboard visual para controlar los bots
   - Iniciar/detener bots con un click
+  - **Filtros avanzados**: CMS, velocidad, eco-only
   - Logs en tiempo real
-  - Estado de conexión con StaffKit
+  - Selector de lista destino
+  - Sistema de actualizaciones Git integrado
 
 - **🔐 Seguridad:**
   - Autenticación usuario/contraseña
@@ -110,7 +121,49 @@ ACCESS_PATH=/panel
 # === LIMITES ===
 MAX_LEADS_PER_RUN=10
 DAILY_LIMIT=50
+
+# === FILTROS DE VALIDACIÓN (Fase A) ===
+CMS_FILTER=wordpress          # all, wordpress, joomla
+MIN_SPEED_SCORE=0            # Score mínimo PageSpeed
+MAX_SPEED_SCORE=80           # Captar webs con score menor (lentas)
+ECO_VERDE_ONLY=false         # Solo empresas con perfil ecológico
+SKIP_PAGESPEED_API=true      # Usar fallback rápido en vez de API
 ```
+
+## 🔍 Filtros de Validación (Fase A)
+
+El Direct Bot ahora incluye validación y enriquecimiento completo:
+
+### Filtro CMS
+- `wordpress`: Solo sitios WordPress (default)
+- `joomla`: Solo sitios Joomla
+- `all`: Cualquier CMS
+
+### Filtro de Velocidad
+Captura webs lentas que necesitan optimización:
+- `MAX_SPEED_SCORE=80`: Captar webs con score menor a 80
+- `MAX_SPEED_SCORE=60`: Solo webs muy lentas
+
+### Filtro Ecológico
+- `ECO_VERDE_ONLY=true`: Solo empresas con keywords ecológicas en su web
+
+### Uso desde CLI
+```bash
+# Filtrar por CMS
+python run_bot.py direct -q "agencia madrid" --cms joomla
+
+# Captar solo webs muy lentas
+python run_bot.py direct -q "agencia madrid" --max-speed 60
+
+# Solo empresas ecológicas
+python run_bot.py direct -q "agencia sostenible" --eco-only
+```
+
+### Desde Dashboard
+Los filtros están disponibles en el panel de control del Direct Bot:
+- Selector de CMS
+- Selector de velocidad máxima
+- Checkbox "Solo eco"
 
 ## 🚀 Uso CLI
 
