@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs - BotScrap External</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #334155;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-secondary {
+            background: #334155;
+            color: #e2e8f0;
+        }
+        .btn-secondary:hover {
+            background: #475569;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: #fff;
+        }
+        .btn-danger {
+            background: #dc2626;
+            color: #fff;
+        }
+        .container {
+            display: flex;
+            height: calc(100vh - 73px);
+        }
+        .sidebar {
+            width: 280px;
+            background: #1e293b;
+            border-right: 1px solid #334155;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sidebar-header h3 {
+            font-size: 14px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .log-list {
+            padding: 8px;
+        }
+        .log-item {
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 4px;
+        }
+        .log-item:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        .log-item.active {
+            background: rgba(59, 130, 246, 0.2);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        .log-item-name {
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            word-break: break-all;
+        }
+        .log-item-meta {
+            font-size: 11px;
+            color: #64748b;
+            display: flex;
+            justify-content: space-between;
+        }
+        .bot-badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .bot-badge.direct {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+        .bot-badge.resentment {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+        .bot-badge.social {
+            background: rgba(168, 85, 247, 0.2);
+            color: #c084fc;
+        }
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .log-header {
+            padding: 16px 24px;
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .log-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .log-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .log-viewer {
+            flex: 1;
+            background: #0a0f1a;
+            overflow: auto;
+            padding: 16px;
+        }
+        .log-content {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .log-line {
+            padding: 2px 0;
+        }
+        .log-line:hover {
+            background: rgba(255,255,255,0.03);
+        }
+        /* Colores para diferentes tipos de log */
+        .log-info {
+            color: #60a5fa;
+        }
+        .log-warning {
+            color: #fbbf24;
+        }
+        .log-error {
+            color: #f87171;
+        }
+        .log-success {
+            color: #4ade80;
+        }
+        .log-debug {
+            color: #64748b;
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(74, 222, 128, 0.1);
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .status-indicator.running {
+            background: rgba(74, 222, 128, 0.1);
+            color: #4ade80;
+        }
+        .status-indicator.stopped {
+            background: rgba(100, 116, 139, 0.2);
+            color: #94a3b8;
+        }
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #64748b;
+        }
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        .auto-scroll-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+        .auto-scroll-toggle input {
+            width: 16px;
+            height: 16px;
+        }
+        .refresh-indicator {
+            font-size: 11px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            📋 Logs en Tiempo Real
+        </h1>
+        <div class="header-actions">
+            <a href="{{ access_path }}/dashboard" class="btn btn-secondary">← Dashboard</a>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h3>Archivos de Log</h3>
+                <button class="btn btn-secondary" onclick="refreshLogList()" style="padding: 4px 8px; font-size: 12px;">
+                    🔄
+                </button>
+            </div>
+            <div class="log-list" id="logList">
+                <div class="empty-state" style="padding: 40px 20px;">
+                    <p>Cargando...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="log-header">
+                <div>
+                    <h2 id="currentLogName">Selecciona un log</h2>
+                    <span class="refresh-indicator" id="refreshIndicator"></span>
+                </div>
+                <div class="log-actions">
+                    <label class="auto-scroll-toggle">
+                        <input type="checkbox" id="autoScroll" checked>
+                        Auto-scroll
+                    </label>
+                    <label class="auto-scroll-toggle">
+                        <input type="checkbox" id="autoRefresh" checked>
+                        Auto-refresh (3s)
+                    </label>
+                    <button class="btn btn-secondary" onclick="refreshCurrentLog()">🔄 Refresh</button>
+                    <button class="btn btn-secondary" onclick="clearViewer()">🗑️ Clear</button>
+                </div>
+            </div>
+            
+            <div class="log-viewer" id="logViewer">
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p>Selecciona un archivo de log en la barra lateral</p>
+                    <p style="font-size: 12px; margin-top: 8px;">o ejecuta un bot para ver los logs en tiempo real</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const accessPath = '{{ access_path }}';
+        let currentLogFile = null;
+        let autoRefreshInterval = null;
+        
+        // Cargar lista de logs
+        async function refreshLogList() {
+            try {
+                const response = await fetch(`${accessPath}/api/logs-list`);
+                const data = await response.json();
+                
+                const logList = document.getElementById('logList');
+                
+                if (data.logs && data.logs.length > 0) {
+                    logList.innerHTML = data.logs.map(log => `
+                        <div class="log-item ${currentLogFile === log.name ? 'active' : ''}" 
+                             onclick="loadLog('${log.name}')">
+                            <div class="log-item-name">
+                                <span class="bot-badge ${log.bot_type}">${log.bot_type}</span>
+                                ${log.name}
+                            </div>
+                            <div class="log-item-meta">
+                                <span>${formatSize(log.size)}</span>
+                                <span>${formatDate(log.modified)}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    logList.innerHTML = `
+                        <div class="empty-state" style="padding: 40px 20px;">
+                            <p>No hay logs aún</p>
+                            <p style="font-size: 12px; margin-top: 8px;">Ejecuta un bot para generar logs</p>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error('Error loading log list:', e);
+            }
+        }
+        
+        // Cargar contenido de un log
+        async function loadLog(filename) {
+            currentLogFile = filename;
+            document.getElementById('currentLogName').textContent = filename;
+            
+            // Actualizar selección en sidebar
+            document.querySelectorAll('.log-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.textContent.includes(filename)) {
+                    item.classList.add('active');
+                }
+            });
+            
+            await refreshCurrentLog();
+            
+            // Iniciar auto-refresh si está activado
+            setupAutoRefresh();
+        }
+        
+        // Refrescar log actual
+        async function refreshCurrentLog() {
+            if (!currentLogFile) return;
+            
+            try {
+                const response = await fetch(`${accessPath}/api/logs-file/${currentLogFile}`);
+                const data = await response.json();
+                
+                const viewer = document.getElementById('logViewer');
+                const content = highlightLog(data.logs || 'No hay contenido');
+                
+                viewer.innerHTML = `<pre class="log-content">${content}</pre>`;
+                
+                // Auto-scroll si está activado
+                if (document.getElementById('autoScroll').checked) {
+                    viewer.scrollTop = viewer.scrollHeight;
+                }
+                
+                // Actualizar indicador
+                document.getElementById('refreshIndicator').textContent = 
+                    `Actualizado: ${new Date().toLocaleTimeString()}`;
+                    
+            } catch (e) {
+                console.error('Error loading log:', e);
+            }
+        }
+        
+        // Resaltar sintaxis de logs
+        function highlightLog(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/(ERROR|Error|error|CRITICAL|FATAL)/g, '<span class="log-error">$1</span>')
+                .replace(/(WARNING|Warning|warning|WARN)/g, '<span class="log-warning">$1</span>')
+                .replace(/(INFO|Info)/g, '<span class="log-info">$1</span>')
+                .replace(/(DEBUG|Debug)/g, '<span class="log-debug">$1</span>')
+                .replace(/(SUCCESS|✅|✓)/g, '<span class="log-success">$1</span>')
+                .replace(/(❌|✗|FAILED|Failed)/g, '<span class="log-error">$1</span>')
+                .replace(/(\d{2}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})/g, '<span style="color: #94a3b8;">$1</span>')
+                .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color: #60a5fa;">$1</a>');
+        }
+        
+        // Setup auto-refresh
+        function setupAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            
+            if (document.getElementById('autoRefresh').checked && currentLogFile) {
+                autoRefreshInterval = setInterval(refreshCurrentLog, 3000);
+            }
+        }
+        
+        // Limpiar visor
+        function clearViewer() {
+            document.getElementById('logViewer').innerHTML = `
+                <div class="empty-state">
+                    <p>Visor limpiado</p>
+                </div>
+            `;
+        }
+        
+        // Formatear tamaño
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        // Formatear fecha
+        function formatDate(isoDate) {
+            const date = new Date(isoDate);
+            return date.toLocaleString('es-ES', { 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        
+        // Event listeners
+        document.getElementById('autoRefresh').addEventListener('change', setupAutoRefresh);
+        
+        // Inicializar
+        refreshLogList();
+        
+        // Refrescar lista cada 10 segundos
+        setInterval(refreshLogList, 10000);
+    </script>
+</body>
+</html>

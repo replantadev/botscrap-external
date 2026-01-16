@@ -216,18 +216,74 @@ def api_stop():
 @require_auth
 def api_logs(bot_type: str):
     """API: Obtener logs de un bot"""
-    if bot_type not in ['direct', 'resentment', 'social']:
+    if bot_type not in ['direct', 'resentment', 'social', 'all']:
         return jsonify({'error': 'Bot inválido'})
     
+    # Si pide todos los logs, buscar el más reciente de cada tipo
+    if bot_type == 'all':
+        all_logs = []
+        for bt in ['direct', 'resentment', 'social']:
+            log_files = sorted(LOGS_DIR.glob(f'{bt}_*.log'), reverse=True)
+            if log_files:
+                with open(log_files[0], 'r') as f:
+                    all_logs.append(f"=== {bt.upper()} ({log_files[0].name}) ===\n")
+                    all_logs.append(f.read()[-5000:])  # Últimos 5KB
+                    all_logs.append("\n\n")
+        return jsonify({'logs': ''.join(all_logs) if all_logs else 'No hay logs'})
+    
+    # Log específico del estado actual o el más reciente
     log_file = bot_status.get(bot_type, {}).get('log_file')
+    
+    if not log_file or not Path(log_file).exists():
+        # Buscar el log más reciente de este tipo
+        log_files = sorted(LOGS_DIR.glob(f'{bot_type}_*.log'), reverse=True)
+        if log_files:
+            log_file = str(log_files[0])
     
     if log_file and Path(log_file).exists():
         with open(log_file, 'r') as f:
-            # Últimas 100 líneas
-            lines = f.readlines()[-100:]
-            return jsonify({'logs': ''.join(lines)})
+            content = f.read()
+            return jsonify({'logs': content, 'file': Path(log_file).name})
     
     return jsonify({'logs': 'No hay logs disponibles'})
+
+
+@app.route(f'{ACCESS_PATH}/api/logs-list')
+@require_auth
+def api_logs_list():
+    """API: Listar todos los archivos de log"""
+    logs = []
+    for log_file in sorted(LOGS_DIR.glob('*.log'), reverse=True)[:50]:
+        stat = log_file.stat()
+        logs.append({
+            'name': log_file.name,
+            'size': stat.st_size,
+            'modified': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            'bot_type': log_file.stem.split('_')[0] if '_' in log_file.stem else 'unknown'
+        })
+    return jsonify({'logs': logs})
+
+
+@app.route(f'{ACCESS_PATH}/api/logs-file/<filename>')
+@require_auth
+def api_log_file(filename: str):
+    """API: Obtener contenido de un archivo de log específico"""
+    # Sanitizar nombre de archivo
+    safe_name = Path(filename).name
+    log_file = LOGS_DIR / safe_name
+    
+    if not log_file.exists() or not str(log_file).endswith('.log'):
+        return jsonify({'error': 'Archivo no encontrado'}), 404
+    
+    with open(log_file, 'r') as f:
+        return jsonify({'logs': f.read(), 'file': safe_name})
+
+
+@app.route(f'{ACCESS_PATH}/logs')
+@require_auth
+def logs_page():
+    """Página de logs en tiempo real"""
+    return render_template('logs.html', access_path=ACCESS_PATH)
 
 
 @app.route(f'{ACCESS_PATH}/api/logs/<bot_type>/stream')
