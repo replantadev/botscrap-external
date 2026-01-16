@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Direct Bot - Búsqueda directa de leads en Google
+Versión mejorada con validación y enriquecimiento completo
 """
 
 import re
@@ -23,23 +24,43 @@ from config import (
     GOOGLE_API_KEY, CX_ID, 
     SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX,
     HTTP_TIMEOUT, SOCIAL_MEDIA_DOMAINS,
-    MAX_LEADS_PER_RUN
+    MAX_LEADS_PER_RUN,
+    # Nuevos filtros
+    CMS_FILTER, MIN_SPEED_SCORE, MAX_SPEED_SCORE,
+    ECO_VERDE_ONLY, SKIP_PAGESPEED_API
 )
 from .base_bot import BaseBot
+from utils.lead_validator import LeadValidator
+from utils.email_enricher import EmailEnricher
 
 logger = logging.getLogger(__name__)
 
 
 class DirectBot(BaseBot):
-    """Bot de búsqueda directa en Google"""
+    """Bot de búsqueda directa en Google con validación completa"""
     
-    def __init__(self, dry_run: bool = False):
+    def __init__(self, dry_run: bool = False, config: Dict = None):
         super().__init__(dry_run=dry_run)
         
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
+        
+        # Configuración de filtros (override desde parámetros o usar defaults)
+        config = config or {}
+        self.validator_config = {
+            'cms_filter': config.get('cms_filter', CMS_FILTER),
+            'min_speed_score': config.get('min_speed_score', MIN_SPEED_SCORE),
+            'max_speed_score': config.get('max_speed_score', MAX_SPEED_SCORE),
+            'eco_verde_only': config.get('eco_verde_only', ECO_VERDE_ONLY),
+            'skip_pagespeed_api': config.get('skip_pagespeed_api', SKIP_PAGESPEED_API),
+            'google_api_key': GOOGLE_API_KEY,
+        }
+        
+        # Inicializar validador y enriquecedor
+        self.validator = LeadValidator(session=self.session, config=self.validator_config)
+        self.email_enricher = EmailEnricher(session=self.session)
     
     def run(self, query: str, max_leads: int = None, list_id: int = None) -> Dict:
         """
@@ -186,7 +207,7 @@ class DirectBot(BaseBot):
     
     def _analyze_url(self, url: str) -> Optional[Dict]:
         """
-        Analizar una URL y extraer información del lead
+        Analizar una URL y extraer información del lead con validación completa
         """
         try:
             response = self.session.get(url, timeout=HTTP_TIMEOUT, verify=False)
@@ -194,72 +215,53 @@ class DirectBot(BaseBot):
             if response.status_code != 200:
                 return None
             
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Detectar WordPress
-            is_wordpress = self._detect_wordpress(response.text, soup)
-            
-            if not is_wordpress:
-                logger.debug(f"No es WordPress: {url}")
-                return None
-            
-            # Extraer información
+            html_content = response.text
+            soup = BeautifulSoup(html_content, 'html.parser')
             domain = self._extract_domain(url)
             
-            lead = {
+            # Crear lead básico
+            basic_lead = {
                 'web': domain,
                 'website': url,
                 'empresa': self._extract_company_name(soup, domain),
-                'email': self._extract_email(response.text),
-                'telefono': self._extract_phone(response.text),
-                'wp_version': self._detect_wp_version(response.text),
-                'needs_email_enrichment': True,
-                'notas': f'Encontrado via Direct Bot - Query search',
+                'notas': 'Encontrado via Direct Bot - Query search',
             }
             
-            return lead
+            # Validar y enriquecer con el validador completo
+            enriched_lead = self.validator.validate_and_enrich(basic_lead, html_content)
+            
+            if not enriched_lead:
+                logger.debug(f"Lead no pasó validación: {domain}")
+                return None
+            
+            # Enriquecer emails
+            email_result = self.email_enricher.enrich_emails(url, enriched_lead.get('empresa', ''))
+            enriched_lead['email'] = email_result.get('email_principal', '')
+            enriched_lead['emails_adicionales'] = '|'.join(email_result.get('emails_adicionales', []))
+            enriched_lead['email_tipo'] = email_result.get('email_tipo', 'unknown')
+            enriched_lead['email_confianza'] = email_result.get('confianza', 0)
+            
+            # Buscar teléfono
+            enriched_lead['telefono'] = self._extract_phone(html_content)
+            
+            # Buscar LinkedIn
+            linkedin = self.validator.find_linkedin(html_content)
+            if linkedin:
+                enriched_lead['linkedin'] = linkedin
+            
+            # Marcar que necesita enriquecimiento adicional si no hay email de calidad
+            enriched_lead['needs_email_enrichment'] = email_result.get('confianza', 0) < 50
+            
+            return enriched_lead
             
         except Exception as e:
             logger.debug(f"Error analizando {url}: {e}")
             return None
     
     def _detect_wordpress(self, html: str, soup: BeautifulSoup) -> bool:
-        """Detectar si es WordPress"""
-        indicators = [
-            'wp-content',
-            'wp-includes',
-            'wordpress',
-            '/wp-json/',
-            'wp-emoji',
-        ]
-        
-        html_lower = html.lower()
-        
-        for indicator in indicators:
-            if indicator in html_lower:
-                return True
-        
-        # Check meta generator
-        generator = soup.find('meta', attrs={'name': 'generator'})
-        if generator and 'wordpress' in generator.get('content', '').lower():
-            return True
-        
-        return False
-    
-    def _detect_wp_version(self, html: str) -> str:
-        """Detectar versión de WordPress"""
-        patterns = [
-            r'WordPress\s*([\d.]+)',
-            r'ver=([\d.]+)',
-            r'wp-includes.*?\?ver=([\d.]+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, html, re.IGNORECASE)
-            if match:
-                return match.group(1)
-        
-        return ''
+        """Detectar si es WordPress (método legacy, usa validador para filtrado)"""
+        cms = self.validator.quick_cms_check('', html)
+        return cms == 'wordpress'
     
     def _extract_company_name(self, soup: BeautifulSoup, domain: str) -> str:
         """Extraer nombre de empresa"""
@@ -273,23 +275,6 @@ class DirectBot(BaseBot):
         # Fallback: capitalizar dominio
         return domain.split('.')[0].title()
     
-    def _extract_email(self, html: str) -> str:
-        """Extraer email del HTML"""
-        # Patrón de email
-        pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-        
-        emails = re.findall(pattern, html)
-        
-        # Filtrar emails genéricos
-        excluded = ['example.com', 'domain.com', 'email.com', 'yoursite', 'wordpress']
-        
-        for email in emails:
-            email_lower = email.lower()
-            if not any(ex in email_lower for ex in excluded):
-                return email
-        
-        return ''
-    
     def _extract_phone(self, html: str) -> str:
         """Extraer teléfono del HTML"""
         patterns = [
@@ -301,7 +286,6 @@ class DirectBot(BaseBot):
             matches = re.findall(pattern, html, re.IGNORECASE)
             if matches:
                 phone = matches[0] if isinstance(matches[0], str) else matches[0]
-                # Limpiar
                 phone = re.sub(r'[^\d+]', '', phone)
                 if len(phone) >= 9:
                     return phone

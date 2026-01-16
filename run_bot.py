@@ -34,13 +34,26 @@ def cli():
 @click.option('--query', '-q', required=True, help='Query de búsqueda (ej: "agencia marketing wordpress madrid")')
 @click.option('--limit', '-l', default=10, help='Número máximo de leads')
 @click.option('--list-id', type=int, help='ID de lista en StaffKit (override .env)')
+@click.option('--cms', type=click.Choice(['all', 'wordpress', 'joomla']), default=None, help='Filtrar por CMS')
+@click.option('--max-speed', type=int, default=None, help='Max speed score (captar webs lentas)')
+@click.option('--eco-only', is_flag=True, help='Solo perfiles ecológicos')
 @click.option('--dry-run', is_flag=True, help='No guardar, solo mostrar resultados')
-def direct(query: str, limit: int, list_id: int, dry_run: bool):
+def direct(query: str, limit: int, list_id: int, cms: str, max_speed: int, eco_only: bool, dry_run: bool):
     """🎯 Bot de búsqueda directa en Google"""
     
     console.print(f"\n[bold blue]🎯 Direct Bot - BotScrap External[/bold blue]")
     console.print(f"Query: [cyan]{query}[/cyan]")
-    console.print(f"Límite: [cyan]{limit}[/cyan] leads\n")
+    console.print(f"Límite: [cyan]{limit}[/cyan] leads")
+    
+    # Mostrar filtros activos
+    if cms:
+        console.print(f"Filtro CMS: [cyan]{cms}[/cyan]")
+    if max_speed:
+        console.print(f"Max Speed Score: [cyan]{max_speed}[/cyan]")
+    if eco_only:
+        console.print(f"[green]🌿 Solo perfiles ecológicos[/green]")
+    
+    console.print()
     
     # Validar config
     validation = validate_config()
@@ -52,7 +65,16 @@ def direct(query: str, limit: int, list_id: int, dry_run: bool):
     
     from bots.direct_bot import DirectBot
     
-    bot = DirectBot(dry_run=dry_run)
+    # Construir config de filtros
+    config = {}
+    if cms:
+        config['cms_filter'] = cms
+    if max_speed:
+        config['max_speed_score'] = max_speed
+    if eco_only:
+        config['eco_verde_only'] = True
+    
+    bot = DirectBot(dry_run=dry_run, config=config if config else None)
     results = bot.run(query=query, max_leads=limit, list_id=list_id)
     
     console.print(f"\n[green]✅ Completado:[/green]")

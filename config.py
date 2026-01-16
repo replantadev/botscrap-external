@@ -44,6 +44,17 @@ DATAFORSEO_CREDENTIALS = os.getenv('DATAFORSEO_CREDENTIALS', '')
 MAX_LEADS_PER_RUN = int(os.getenv('MAX_LEADS_PER_RUN', '10'))
 DAILY_LIMIT = int(os.getenv('DAILY_LIMIT', '50'))
 
+# === FILTROS DE VALIDACIÓN ===
+# CMS Filter: 'all', 'wordpress', 'joomla'
+CMS_FILTER = os.getenv('CMS_FILTER', 'wordpress')
+# Speed Score: para captar webs lentas (0-100)
+MIN_SPEED_SCORE = int(os.getenv('MIN_SPEED_SCORE', '0'))
+MAX_SPEED_SCORE = int(os.getenv('MAX_SPEED_SCORE', '80'))  # Captar webs con score < 80
+# Solo perfiles ecológicos
+ECO_VERDE_ONLY = os.getenv('ECO_VERDE_ONLY', 'false').lower() == 'true'
+# Usar fallback de velocidad en vez de PageSpeed API (más rápido)
+SKIP_PAGESPEED_API = os.getenv('SKIP_PAGESPEED_API', 'true').lower() == 'true'
+
 # === SCRAPING ===
 SCRAPER_DELAY_MIN = float(os.getenv('SCRAPER_DELAY_MIN', '3'))
 SCRAPER_DELAY_MAX = float(os.getenv('SCRAPER_DELAY_MAX', '8'))

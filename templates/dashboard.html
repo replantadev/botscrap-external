@@ -555,7 +555,7 @@
                         <span class="bot-icon">🎯</span>
                         <div>
                             <div class="bot-name">Direct Bot</div>
-                            <div class="bot-type">Búsqueda Google</div>
+                            <div class="bot-type">Búsqueda Google + Validación</div>
                         </div>
                     </div>
                     <span class="bot-status stopped" id="status-direct">Detenido</span>
@@ -567,6 +567,22 @@
                         </div>
                         <div class="form-row">
                             <input type="number" id="direct-limit" placeholder="Límite" value="10" min="1" max="50">
+                            <select id="direct-cms" title="Filtro CMS">
+                                <option value="wordpress">Solo WordPress</option>
+                                <option value="joomla">Solo Joomla</option>
+                                <option value="all">Cualquier CMS</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <select id="direct-speed" title="Filtro de velocidad">
+                                <option value="80">Webs lentas (score &lt; 80)</option>
+                                <option value="60">Muy lentas (score &lt; 60)</option>
+                                <option value="100">Sin filtro de velocidad</option>
+                            </select>
+                            <label style="display: flex; align-items: center; gap: 6px; padding: 8px; background: #0f172a; border-radius: 6px; cursor: pointer;">
+                                <input type="checkbox" id="direct-eco" style="width: 16px; height: 16px;">
+                                🌿 Solo eco
+                            </label>
                         </div>
                     </div>
                     <div class="bot-actions">
@@ -924,11 +940,26 @@
             if (botType === 'direct') {
                 const query = document.getElementById('direct-query').value;
                 const limit = document.getElementById('direct-limit').value;
+                const cms = document.getElementById('direct-cms').value;
+                const speed = document.getElementById('direct-speed').value;
+                const eco = document.getElementById('direct-eco').checked;
+                
                 if (!query) {
                     showToast('Introduce una query de búsqueda', 'error');
                     return;
                 }
                 args.push('--query', query, '--limit', limit);
+                
+                // Agregar filtros
+                if (cms !== 'wordpress') {  // wordpress es el default
+                    args.push('--cms', cms);
+                }
+                if (speed !== '80') {  // 80 es el default
+                    args.push('--max-speed', speed);
+                }
+                if (eco) {
+                    args.push('--eco-only');
+                }
             } else if (botType === 'resentment') {
                 const hosting = document.getElementById('resentment-hosting').value;
                 const limit = document.getElementById('resentment-limit').value;
