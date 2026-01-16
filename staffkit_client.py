@@ -81,6 +81,37 @@ class StaffKitClient:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
+    def get_lists(self) -> List[Dict]:
+        """
+        Obtener listas disponibles de StaffKit
+        
+        Returns:
+            Lista de diccionarios con id y nombre de cada lista
+        """
+        if not self.enabled:
+            return []
+        
+        try:
+            response = requests.get(
+                f"{self.api_url}/api/bots.php",
+                params={'action': 'get_lists'},
+                headers=self._headers(),
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success') and 'lists' in data:
+                    return data['lists']
+            
+            # Si falla, devolver lista vacía
+            logger.warning(f"Could not fetch lists: {response.status_code}")
+            return []
+            
+        except Exception as e:
+            logger.warning(f"Error fetching lists: {e}")
+            return []
+    
     def check_duplicate(self, domain: str) -> bool:
         """
         Verificar si un dominio ya existe en StaffKit

@@ -286,6 +286,22 @@ def logs_page():
     return render_template('logs.html', access_path=ACCESS_PATH)
 
 
+@app.route(f'{ACCESS_PATH}/api/lists')
+@require_auth
+def api_lists():
+    """API: Obtener listas disponibles de StaffKit"""
+    from staffkit_client import StaffKitClient
+    from config import STAFFKIT_LIST_ID
+    
+    client = StaffKitClient()
+    lists = client.get_lists()
+    
+    return jsonify({
+        'lists': lists,
+        'default_list': STAFFKIT_LIST_ID
+    })
+
+
 @app.route(f'{ACCESS_PATH}/api/logs/<bot_type>/stream')
 @require_auth
 def api_logs_stream(bot_type: str):

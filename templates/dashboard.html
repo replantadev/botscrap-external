@@ -510,6 +510,14 @@
                 <span>Git: <span id="git-branch">--</span></span>
             </div>
             <div class="status-item">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    📋 Lista destino:
+                    <select id="target-list" style="padding: 4px 8px; border-radius: 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569;">
+                        <option value="">Cargando...</option>
+                    </select>
+                </label>
+            </div>
+            <div class="status-item">
                 <span id="last-update">Última actualización: --</span>
             </div>
         </div>
@@ -907,6 +915,12 @@
         async function startBot(botType) {
             let args = [];
             
+            // Obtener lista destino
+            const listId = document.getElementById('target-list').value;
+            if (listId) {
+                args.push('--list-id', listId);
+            }
+            
             if (botType === 'direct') {
                 const query = document.getElementById('direct-query').value;
                 const limit = document.getElementById('direct-limit').value;
@@ -914,7 +928,7 @@
                     showToast('Introduce una query de búsqueda', 'error');
                     return;
                 }
-                args = ['--query', query, '--limit', limit];
+                args.push('--query', query, '--limit', limit);
             } else if (botType === 'resentment') {
                 const hosting = document.getElementById('resentment-hosting').value;
                 const limit = document.getElementById('resentment-limit').value;
@@ -923,14 +937,14 @@
                     return;
                 }
                 if (hosting === '__all__') {
-                    args = ['--all-hostings', '--limit', limit];
+                    args.push('--all-hostings', '--limit', limit);
                 } else {
-                    args = ['--hosting', hosting, '--limit', limit];
+                    args.push('--hosting', hosting, '--limit', limit);
                 }
             } else if (botType === 'social') {
                 const source = document.getElementById('social-source').value;
                 const limit = document.getElementById('social-limit').value;
-                args = ['--sources', source, '--limit', limit];
+                args.push('--sources', source, '--limit', limit);
             }
             
             try {
@@ -1064,12 +1078,35 @@
             }
         }
 
+        // Cargar listas desde StaffKit
+        async function loadLists() {
+            const select = document.getElementById('target-list');
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api/lists`);
+                const data = await response.json();
+                
+                if (data.lists && data.lists.length > 0) {
+                    select.innerHTML = data.lists.map(list => 
+                        `<option value="${list.id}" ${list.id == data.default_list ? 'selected' : ''}>
+                            ${list.name} (ID: ${list.id})
+                        </option>`
+                    ).join('');
+                } else {
+                    select.innerHTML = `<option value="${data.default_list}">Lista por defecto (ID: ${data.default_list})</option>`;
+                }
+            } catch (error) {
+                console.error('Error loading lists:', error);
+                select.innerHTML = '<option value="1">Lista 1 (default)</option>';
+            }
+        }
+
         // Inicialización
         document.addEventListener('DOMContentLoaded', function() {
             refreshStatus();
             testConnection();
             loadConfig();
             loadGitStatus();
+            loadLists();
             
             // Auto-refresh cada 5 segundos
             setInterval(refreshStatus, 5000);
