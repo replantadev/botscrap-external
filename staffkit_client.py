@@ -62,7 +62,7 @@ class StaffKitClient:
             Dict con estado de conexión
         """
         if not self.enabled:
-            return {'success': False, 'error': 'Client not configured'}
+            return {'success': False, 'error': 'Client not configured', 'status': 'error'}
         
         try:
             response = requests.get(
@@ -72,14 +72,20 @@ class StaffKitClient:
                 timeout=10
             )
             
+            success = response.status_code == 200
             return {
-                'success': response.status_code == 200,
+                'success': success,
+                'status': 'ok' if success else 'error',
                 'status_code': response.status_code,
                 'url': self.api_url
             }
             
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            return {'success': False, 'status': 'error', 'error': str(e)}
+    
+    def check_connection(self) -> Dict:
+        """Alias para test_connection (usado por health monitor)"""
+        return self.test_connection()
     
     def get_lists(self) -> List[Dict]:
         """
