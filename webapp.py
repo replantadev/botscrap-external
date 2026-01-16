@@ -489,6 +489,315 @@ def api_restart():
     })
 
 
+# ============ WORKER AUTÓNOMO API ============
+
+@app.route(f'{ACCESS_PATH}/worker')
+@require_auth
+def worker_page():
+    """Página del Worker Autónomo"""
+    return render_template('worker.html', access_path=ACCESS_PATH)
+
+
+@app.route(f'{ACCESS_PATH}/api/worker/status')
+@require_auth
+def api_worker_status():
+    """API: Estado completo del worker autónomo"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        return jsonify(orchestrator.get_status())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route(f'{ACCESS_PATH}/api/worker/start', methods=['POST'])
+@require_auth
+def api_worker_start():
+    """API: Iniciar worker autónomo"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        orchestrator.start()
+        return jsonify({'success': True, 'message': 'Worker iniciado'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/worker/stop', methods=['POST'])
+@require_auth
+def api_worker_stop():
+    """API: Detener worker autónomo"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        orchestrator.stop()
+        return jsonify({'success': True, 'message': 'Worker detenido'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/worker/pause', methods=['POST'])
+@require_auth
+def api_worker_pause():
+    """API: Pausar worker"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        orchestrator.pause()
+        return jsonify({'success': True, 'message': 'Worker pausado'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/worker/resume', methods=['POST'])
+@require_auth
+def api_worker_resume():
+    """API: Reanudar worker"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        orchestrator.resume()
+        return jsonify({'success': True, 'message': 'Worker reanudado'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/queue/jobs')
+@require_auth
+def api_queue_jobs():
+    """API: Jobs en la cola"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        pending = orchestrator.job_queue.get_pending()
+        running = orchestrator.job_queue.get_running()
+        history = orchestrator.job_queue.get_history(limit=20)
+        
+        return jsonify({
+            'pending': [j.to_dict() for j in pending],
+            'running': [j.to_dict() for j in running],
+            'history': [j.to_dict() for j in history],
+            'stats': orchestrator.job_queue.get_stats()
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route(f'{ACCESS_PATH}/api/queue/add', methods=['POST'])
+@require_auth
+def api_queue_add():
+    """API: Añadir job a la cola"""
+    try:
+        data = request.json or {}
+        bot_type = data.get('bot_type')
+        params = data.get('params', {})
+        priority = data.get('priority', 3)
+        
+        if bot_type not in ['direct', 'resentment', 'social']:
+            return jsonify({'success': False, 'error': 'Tipo de bot inválido'})
+        
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        job_id = orchestrator.add_job(bot_type, params, priority)
+        
+        return jsonify({'success': True, 'job_id': job_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/queue/cancel', methods=['POST'])
+@require_auth
+def api_queue_cancel():
+    """API: Cancelar job"""
+    try:
+        data = request.json or {}
+        job_id = data.get('job_id')
+        
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        success = orchestrator.job_queue.cancel(job_id)
+        
+        return jsonify({'success': success})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/schedules')
+@require_auth
+def api_schedules():
+    """API: Schedules programados"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        schedules = orchestrator.get_schedules()
+        upcoming = orchestrator.scheduler.get_upcoming() if orchestrator.scheduler else []
+        
+        return jsonify({
+            'schedules': [
+                {
+                    'id': s.id,
+                    'bot_type': s.bot_type,
+                    'enabled': s.enabled,
+                    'cron': s.cron,
+                    'interval_hours': s.interval_hours,
+                    'description': s.description,
+                    'last_run': s.last_run,
+                    'next_run': s.next_run,
+                    'priority': s.priority
+                }
+                for s in schedules
+            ],
+            'upcoming': upcoming
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route(f'{ACCESS_PATH}/api/schedules/<schedule_id>', methods=['PUT'])
+@require_auth
+def api_schedule_update(schedule_id: str):
+    """API: Actualizar schedule"""
+    try:
+        data = request.json or {}
+        
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        updated = orchestrator.update_schedule(schedule_id, **data)
+        
+        if updated:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Schedule no encontrado'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/schedules/<schedule_id>/toggle', methods=['POST'])
+@require_auth
+def api_schedule_toggle(schedule_id: str):
+    """API: Activar/desactivar schedule"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        schedule = orchestrator.scheduler.get_schedule(schedule_id)
+        if not schedule:
+            return jsonify({'success': False, 'error': 'Schedule no encontrado'})
+        
+        if schedule.enabled:
+            orchestrator.scheduler.disable_schedule(schedule_id)
+        else:
+            orchestrator.scheduler.enable_schedule(schedule_id)
+        
+        return jsonify({'success': True, 'enabled': not schedule.enabled})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/schedules/<schedule_id>/run', methods=['POST'])
+@require_auth
+def api_schedule_run_now(schedule_id: str):
+    """API: Ejecutar schedule ahora"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        job_id = orchestrator.scheduler.run_now(schedule_id)
+        
+        if job_id:
+            return jsonify({'success': True, 'job_id': job_id})
+        else:
+            return jsonify({'success': False, 'error': 'Schedule no encontrado'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route(f'{ACCESS_PATH}/api/health')
+@require_auth
+def api_health():
+    """API: Estado de salud del sistema"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        if orchestrator.health_monitor:
+            return jsonify(orchestrator.health_monitor.get_health_status())
+        else:
+            return jsonify({'healthy': True, 'message': 'Health monitor not running'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route(f'{ACCESS_PATH}/api/metrics')
+@require_auth
+def api_metrics():
+    """API: Métricas del sistema"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        return jsonify(orchestrator.get_metrics_summary())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route(f'{ACCESS_PATH}/api/run-history')
+@require_auth
+def api_run_history():
+    """API: Historial de ejecuciones"""
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        limit = request.args.get('limit', 50, type=int)
+        bot_type = request.args.get('bot_type')
+        
+        history = orchestrator.state_manager.get_run_history(bot_type, limit)
+        
+        return jsonify({'history': history})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     # Crear directorios
     LOGS_DIR.mkdir(exist_ok=True)

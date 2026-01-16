@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Worker Autónomo - BotScrap</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --dark-bg: #1e1e2e;
+            --card-bg: #2d2d3d;
+        }
+        body {
+            background: var(--dark-bg);
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+        }
+        .card-header {
+            background: rgba(255,255,255,0.05);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .navbar {
+            background: rgba(0,0,0,0.3) !important;
+            backdrop-filter: blur(10px);
+        }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .status-running {
+            background: var(--success-color);
+            animation: pulse 1.5s infinite;
+        }
+        .status-paused {
+            background: var(--warning-color);
+        }
+        .status-stopped {
+            background: var(--danger-color);
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .btn-primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        .btn-primary:hover {
+            background: #4338ca;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            color: #888;
+        }
+        .job-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .job-status-pending { border-left: 3px solid var(--warning-color); }
+        .job-status-running { border-left: 3px solid var(--success-color); }
+        .job-status-completed { border-left: 3px solid #888; }
+        .job-status-failed { border-left: 3px solid var(--danger-color); }
+        .schedule-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .schedule-disabled {
+            opacity: 0.5;
+        }
+        .health-check {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .health-check:last-child {
+            border-bottom: none;
+        }
+        .health-ok { color: var(--success-color); }
+        .health-fail { color: var(--danger-color); }
+        .tab-content {
+            padding-top: 1rem;
+        }
+        .nav-tabs .nav-link {
+            color: #888;
+            border: none;
+        }
+        .nav-tabs .nav-link.active {
+            color: var(--primary-color);
+            background: transparent;
+            border-bottom: 2px solid var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark">
+        <div class="container-fluid">
+            <span class="navbar-brand">🤖 Worker Autónomo</span>
+            <div class="d-flex align-items-center">
+                <span id="worker-status-badge" class="badge bg-secondary me-3">Cargando...</span>
+                <a href="{{ access_path }}/dashboard" class="btn btn-outline-light btn-sm me-2">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
+                <a href="{{ access_path }}/logout" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-box-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <!-- Control del Worker -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">
+                                    <span id="status-indicator" class="status-indicator status-stopped"></span>
+                                    Estado del Worker: <span id="worker-status-text">Detenido</span>
+                                </h5>
+                                <small class="text-muted">
+                                    Último heartbeat: <span id="last-heartbeat">-</span>
+                                </small>
+                            </div>
+                            <div class="btn-group">
+                                <button id="btn-start" class="btn btn-success" onclick="workerAction('start')">
+                                    <i class="bi bi-play-fill"></i> Iniciar
+                                </button>
+                                <button id="btn-pause" class="btn btn-warning" onclick="workerAction('pause')" disabled>
+                                    <i class="bi bi-pause-fill"></i> Pausar
+                                </button>
+                                <button id="btn-resume" class="btn btn-info" onclick="workerAction('resume')" disabled>
+                                    <i class="bi bi-play-fill"></i> Reanudar
+                                </button>
+                                <button id="btn-stop" class="btn btn-danger" onclick="workerAction('stop')" disabled>
+                                    <i class="bi bi-stop-fill"></i> Detener
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="stat-leads-today">0</div>
+                    <div class="stat-label">Leads Hoy</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="stat-runs-today">0</div>
+                    <div class="stat-label">Ejecuciones Hoy</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="stat-pending-jobs">0</div>
+                    <div class="stat-label">Jobs Pendientes</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="stat-value" id="stat-total-domains">0</div>
+                    <div class="stat-label">Dominios Vistos</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+                            <li class="nav-item">
+                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#queue-tab">
+                                    <i class="bi bi-list-task"></i> Cola de Jobs
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#schedules-tab">
+                                    <i class="bi bi-calendar-week"></i> Programación
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#history-tab">
+                                    <i class="bi bi-clock-history"></i> Historial
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#health-tab">
+                                    <i class="bi bi-heart-pulse"></i> Salud
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content">
+                            <!-- Cola de Jobs -->
+                            <div class="tab-pane fade show active" id="queue-tab">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="mb-0">Jobs en Cola</h6>
+                                    <button class="btn btn-primary btn-sm" onclick="showAddJobModal()">
+                                        <i class="bi bi-plus"></i> Añadir Job
+                                    </button>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <h6 class="text-warning"><i class="bi bi-hourglass"></i> Pendientes</h6>
+                                        <div id="pending-jobs-list">
+                                            <p class="text-muted">No hay jobs pendientes</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6 class="text-success"><i class="bi bi-play-circle"></i> Ejecutando</h6>
+                                        <div id="running-jobs-list">
+                                            <p class="text-muted">Ningún job en ejecución</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6><i class="bi bi-check-circle"></i> Completados</h6>
+                                        <div id="completed-jobs-list">
+                                            <p class="text-muted">Sin historial reciente</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Programación -->
+                            <div class="tab-pane fade" id="schedules-tab">
+                                <h6 class="mb-3">Schedules Programados</h6>
+                                <div id="schedules-list">
+                                    <p class="text-muted">Cargando...</p>
+                                </div>
+                                
+                                <h6 class="mt-4 mb-3">Próximas Ejecuciones</h6>
+                                <div id="upcoming-list">
+                                    <p class="text-muted">Cargando...</p>
+                                </div>
+                            </div>
+
+                            <!-- Historial -->
+                            <div class="tab-pane fade" id="history-tab">
+                                <h6 class="mb-3">Historial de Ejecuciones</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Run ID</th>
+                                                <th>Bot</th>
+                                                <th>Estado</th>
+                                                <th>Leads</th>
+                                                <th>Duración</th>
+                                                <th>Fecha</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="history-table-body">
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Salud -->
+                            <div class="tab-pane fade" id="health-tab">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6 class="mb-3">Health Checks</h6>
+                                        <div id="health-checks">
+                                            <p class="text-muted">Cargando...</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6 class="mb-3">Rate Limits</h6>
+                                        <div id="rate-limits">
+                                            <p class="text-muted">Cargando...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Añadir Job -->
+    <div class="modal fade" id="addJobModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark">
+                <div class="modal-header">
+                    <h5 class="modal-title">Añadir Job a la Cola</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Tipo de Bot</label>
+                        <select class="form-select bg-dark text-light" id="job-bot-type">
+                            <option value="direct">🎯 Direct Bot</option>
+                            <option value="resentment">😤 Resentment Bot</option>
+                            <option value="social">📡 Social Bot</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Prioridad</label>
+                        <select class="form-select bg-dark text-light" id="job-priority">
+                            <option value="1">🔥 HOT (inmediata)</option>
+                            <option value="2">⚡ Alta</option>
+                            <option value="3" selected>📋 Normal</option>
+                            <option value="4">⏬ Baja</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="addJob()">Añadir Job</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const ACCESS_PATH = '{{ access_path }}';
+        let refreshInterval;
+
+        async function fetchAPI(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${ACCESS_PATH}/api${endpoint}`, {
+                    headers: { 'Content-Type': 'application/json' },
+                    ...options
+                });
+                return await response.json();
+            } catch (e) {
+                console.error('API Error:', e);
+                return null;
+            }
+        }
+
+        async function updateWorkerStatus() {
+            const data = await fetchAPI('/worker/status');
+            if (!data) return;
+
+            const worker = data.worker || {};
+            const stats = data.stats || {};
+            const queue = data.queue || {};
+
+            // Status
+            const status = worker.status || 'stopped';
+            const running = worker.running;
+            const paused = worker.paused;
+
+            const indicator = document.getElementById('status-indicator');
+            const statusText = document.getElementById('worker-status-text');
+            const badge = document.getElementById('worker-status-badge');
+
+            indicator.className = 'status-indicator';
+            if (running && !paused) {
+                indicator.classList.add('status-running');
+                statusText.textContent = 'Ejecutando';
+                badge.className = 'badge bg-success me-3';
+                badge.textContent = '● Activo';
+            } else if (paused) {
+                indicator.classList.add('status-paused');
+                statusText.textContent = 'Pausado';
+                badge.className = 'badge bg-warning me-3';
+                badge.textContent = '⏸ Pausado';
+            } else {
+                indicator.classList.add('status-stopped');
+                statusText.textContent = 'Detenido';
+                badge.className = 'badge bg-secondary me-3';
+                badge.textContent = '○ Detenido';
+            }
+
+            // Buttons
+            document.getElementById('btn-start').disabled = running;
+            document.getElementById('btn-pause').disabled = !running || paused;
+            document.getElementById('btn-resume').disabled = !paused;
+            document.getElementById('btn-stop').disabled = !running;
+
+            // Heartbeat
+            document.getElementById('last-heartbeat').textContent = 
+                stats.last_heartbeat ? new Date(stats.last_heartbeat).toLocaleTimeString() : '-';
+
+            // Stats
+            document.getElementById('stat-leads-today').textContent = stats.leads_today || 0;
+            document.getElementById('stat-runs-today').textContent = stats.runs_today || 0;
+            document.getElementById('stat-pending-jobs').textContent = queue.pending || 0;
+            document.getElementById('stat-total-domains').textContent = stats.total_domains || 0;
+
+            // Health
+            if (data.health) {
+                updateHealthChecks(data.health);
+            }
+
+            // Rate limits
+            if (data.rate_limits) {
+                updateRateLimits(data.rate_limits);
+            }
+        }
+
+        async function updateJobsQueue() {
+            const data = await fetchAPI('/queue/jobs');
+            if (!data) return;
+
+            // Pending
+            const pendingList = document.getElementById('pending-jobs-list');
+            if (data.pending && data.pending.length > 0) {
+                pendingList.innerHTML = data.pending.map(job => `
+                    <div class="job-item job-status-pending">
+                        <div class="d-flex justify-content-between">
+                            <strong>${job.bot_type}</strong>
+                            <small>#${job.id}</small>
+                        </div>
+                        <small class="text-muted">Prioridad: ${job.priority}</small>
+                        <button class="btn btn-danger btn-sm float-end" onclick="cancelJob('${job.id}')">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                pendingList.innerHTML = '<p class="text-muted">No hay jobs pendientes</p>';
+            }
+
+            // Running
+            const runningList = document.getElementById('running-jobs-list');
+            if (data.running && data.running.length > 0) {
+                runningList.innerHTML = data.running.map(job => `
+                    <div class="job-item job-status-running">
+                        <div class="d-flex justify-content-between">
+                            <strong>${job.bot_type}</strong>
+                            <span class="badge bg-success">Ejecutando</span>
+                        </div>
+                        <small class="text-muted">Iniciado: ${new Date(job.started_at).toLocaleTimeString()}</small>
+                    </div>
+                `).join('');
+            } else {
+                runningList.innerHTML = '<p class="text-muted">Ningún job en ejecución</p>';
+            }
+
+            // History
+            const historyList = document.getElementById('completed-jobs-list');
+            if (data.history && data.history.length > 0) {
+                historyList.innerHTML = data.history.slice(0, 5).map(job => `
+                    <div class="job-item job-status-${job.status}">
+                        <div class="d-flex justify-content-between">
+                            <strong>${job.bot_type}</strong>
+                            <span class="badge ${job.status === 'completed' ? 'bg-success' : 'bg-danger'}">${job.status}</span>
+                        </div>
+                        ${job.result ? `<small class="text-success">+${JSON.parse(job.result || '{}').leads_saved || 0} leads</small>` : ''}
+                    </div>
+                `).join('');
+            } else {
+                historyList.innerHTML = '<p class="text-muted">Sin historial reciente</p>';
+            }
+        }
+
+        async function updateSchedules() {
+            const data = await fetchAPI('/schedules');
+            if (!data) return;
+
+            const list = document.getElementById('schedules-list');
+            if (data.schedules && data.schedules.length > 0) {
+                list.innerHTML = data.schedules.map(s => `
+                    <div class="schedule-item ${s.enabled ? '' : 'schedule-disabled'}">
+                        <div>
+                            <strong>${s.description || s.id}</strong>
+                            <br>
+                            <small class="text-muted">
+                                ${s.cron ? `Cron: ${s.cron}` : `Cada ${s.interval_hours}h`}
+                                | Bot: ${s.bot_type}
+                            </small>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm ${s.enabled ? 'btn-warning' : 'btn-success'}" 
+                                    onclick="toggleSchedule('${s.id}')">
+                                ${s.enabled ? 'Desactivar' : 'Activar'}
+                            </button>
+                            <button class="btn btn-sm btn-primary" onclick="runScheduleNow('${s.id}')">
+                                <i class="bi bi-play"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                list.innerHTML = '<p class="text-muted">No hay schedules configurados</p>';
+            }
+
+            const upcomingList = document.getElementById('upcoming-list');
+            if (data.upcoming && data.upcoming.length > 0) {
+                upcomingList.innerHTML = data.upcoming.map(u => `
+                    <div class="d-flex justify-content-between py-2 border-bottom border-secondary">
+                        <span>${u.description || u.id} (${u.bot_type})</span>
+                        <span class="text-info">En ${u.in_minutes} min</span>
+                    </div>
+                `).join('');
+            } else {
+                upcomingList.innerHTML = '<p class="text-muted">No hay ejecuciones próximas</p>';
+            }
+        }
+
+        async function updateRunHistory() {
+            const data = await fetchAPI('/run-history?limit=20');
+            if (!data) return;
+
+            const tbody = document.getElementById('history-table-body');
+            if (data.history && data.history.length > 0) {
+                tbody.innerHTML = data.history.map(r => `
+                    <tr>
+                        <td><code>${r.run_id}</code></td>
+                        <td>${r.bot_type}</td>
+                        <td>
+                            <span class="badge ${r.status === 'completed' ? 'bg-success' : r.status === 'running' ? 'bg-warning' : 'bg-danger'}">
+                                ${r.status}
+                            </span>
+                        </td>
+                        <td>${r.leads_saved || 0}/${r.leads_found || 0}</td>
+                        <td>${r.duration_seconds ? r.duration_seconds.toFixed(1) + 's' : '-'}</td>
+                        <td>${r.started_at ? new Date(r.started_at).toLocaleString() : '-'}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Sin historial</td></tr>';
+            }
+        }
+
+        function updateHealthChecks(health) {
+            const container = document.getElementById('health-checks');
+            if (health.checks) {
+                container.innerHTML = health.checks.map(c => `
+                    <div class="health-check">
+                        <span>${c.name}</span>
+                        <span class="${c.healthy ? 'health-ok' : 'health-fail'}">
+                            ${c.healthy ? '✓' : '✗'} ${c.message || ''}
+                        </span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function updateRateLimits(limits) {
+            const container = document.getElementById('rate-limits');
+            container.innerHTML = Object.entries(limits).map(([api, status]) => `
+                <div class="health-check">
+                    <span>${api}</span>
+                    <span class="${status.percentage > 90 ? 'health-fail' : status.percentage > 70 ? 'text-warning' : 'health-ok'}">
+                        ${status.current}/${status.limit} (${status.percentage}%)
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        async function workerAction(action) {
+            const result = await fetchAPI(`/worker/${action}`, { method: 'POST' });
+            if (result && result.success) {
+                setTimeout(updateAll, 500);
+            } else {
+                alert(result?.error || 'Error');
+            }
+        }
+
+        function showAddJobModal() {
+            new bootstrap.Modal(document.getElementById('addJobModal')).show();
+        }
+
+        async function addJob() {
+            const botType = document.getElementById('job-bot-type').value;
+            const priority = parseInt(document.getElementById('job-priority').value);
+
+            const result = await fetchAPI('/queue/add', {
+                method: 'POST',
+                body: JSON.stringify({ bot_type: botType, priority })
+            });
+
+            if (result && result.success) {
+                bootstrap.Modal.getInstance(document.getElementById('addJobModal')).hide();
+                updateJobsQueue();
+            } else {
+                alert(result?.error || 'Error');
+            }
+        }
+
+        async function cancelJob(jobId) {
+            if (!confirm('¿Cancelar este job?')) return;
+            
+            const result = await fetchAPI('/queue/cancel', {
+                method: 'POST',
+                body: JSON.stringify({ job_id: jobId })
+            });
+
+            if (result && result.success) {
+                updateJobsQueue();
+            }
+        }
+
+        async function toggleSchedule(scheduleId) {
+            const result = await fetchAPI(`/schedules/${scheduleId}/toggle`, { method: 'POST' });
+            if (result && result.success) {
+                updateSchedules();
+            }
+        }
+
+        async function runScheduleNow(scheduleId) {
+            const result = await fetchAPI(`/schedules/${scheduleId}/run`, { method: 'POST' });
+            if (result && result.success) {
+                alert(`Job añadido: ${result.job_id}`);
+                updateJobsQueue();
+            }
+        }
+
+        function updateAll() {
+            updateWorkerStatus();
+            updateJobsQueue();
+            updateSchedules();
+            updateRunHistory();
+        }
+
+        // Actualización al cambiar de tab
+        document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', () => {
+                if (tab.dataset.bsTarget === '#history-tab') updateRunHistory();
+                else if (tab.dataset.bsTarget === '#schedules-tab') updateSchedules();
+            });
+        });
+
+        // Inicio
+        updateAll();
+        refreshInterval = setInterval(updateWorkerStatus, 5000);
+        setInterval(updateJobsQueue, 10000);
+    </script>
+</body>
+</html>

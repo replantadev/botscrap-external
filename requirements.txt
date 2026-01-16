@@ -28,5 +28,9 @@ gunicorn>=20.1.0
 # Telegram (opcional)
 python-telegram-bot>=13.0
 
+# Worker Autónomo
+APScheduler>=3.9.0
+SQLAlchemy>=1.4.0
+
 # Logging mejorado
 colorlog>=6.7.0

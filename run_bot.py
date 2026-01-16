@@ -170,5 +170,119 @@ def hostings():
     console.print("\nUso: [cyan]python run_bot.py resentment --hosting hostinger[/cyan]")
 
 
+@cli.command()
+@click.option('--test', '-t', is_flag=True, help='Solo probar configuración')
+def worker(test: bool):
+    """🤖 Worker Autónomo 24/7 - Ejecuta bots programados"""
+    
+    console.print(f"\n[bold green]🤖 Worker Autónomo - BotScrap External[/bold green]")
+    
+    # Validar config
+    validation = validate_config()
+    if not validation['valid']:
+        console.print("[red]❌ Configuración inválida:[/red]")
+        for error in validation['errors']:
+            console.print(f"   • {error}")
+        sys.exit(1)
+    
+    from orchestrator import get_orchestrator
+    
+    orchestrator = get_orchestrator()
+    
+    if test:
+        console.print("\n[cyan]Probando configuración...[/cyan]")
+        orchestrator.setup()
+        console.print("[green]✓ Configuración OK[/green]")
+        
+        # Test Telegram
+        if orchestrator.notifier and orchestrator.notifier.enabled:
+            console.print("\n[cyan]Probando Telegram...[/cyan]")
+            if orchestrator.notifier.test_connection():
+                console.print("[green]✓ Telegram OK[/green]")
+            else:
+                console.print("[yellow]⚠ Telegram no funciona[/yellow]")
+        else:
+            console.print("[yellow]⚠ Telegram no configurado[/yellow]")
+        
+        return
+    
+    console.print("\n[bold]Iniciando worker...[/bold]")
+    console.print("Presiona Ctrl+C para detener\n")
+    
+    try:
+        orchestrator.run_forever()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Deteniendo worker...[/yellow]")
+
+
+@cli.command()
+def status():
+    """📊 Estado del Worker y cola de trabajos"""
+    
+    console.print(f"\n[bold cyan]📊 Estado del Sistema[/bold cyan]\n")
+    
+    from orchestrator import get_orchestrator
+    
+    orchestrator = get_orchestrator()
+    orchestrator.setup()
+    
+    status = orchestrator.get_status()
+    
+    # Estado del worker
+    worker_status = status.get('worker', {})
+    running = worker_status.get('running', False)
+    paused = worker_status.get('paused', False)
+    
+    if running and not paused:
+        console.print(f"Worker: [green]● Ejecutando[/green]")
+    elif paused:
+        console.print(f"Worker: [yellow]⏸ Pausado[/yellow]")
+    else:
+        console.print(f"Worker: [red]○ Detenido[/red]")
+    
+    # Cola
+    queue = status.get('queue', {})
+    console.print(f"Cola: [cyan]{queue.get('pending', 0)}[/cyan] pendientes, [yellow]{queue.get('running', 0)}[/yellow] ejecutando")
+    
+    # Stats
+    stats = status.get('stats', {})
+    console.print(f"\n[bold]Estadísticas del día:[/bold]")
+    console.print(f"  Leads guardados: [green]{stats.get('leads_today', 0)}[/green]")
+    console.print(f"  Ejecuciones: {stats.get('runs_today', 0)}")
+    console.print(f"  Dominios vistos: {stats.get('total_domains', 0)}")
+    
+    # Health
+    health = status.get('health', {})
+    if health:
+        healthy = health.get('healthy', False)
+        if healthy:
+            console.print(f"\nSalud: [green]✓ Todo OK[/green]")
+        else:
+            console.print(f"\nSalud: [red]✗ Problemas detectados[/red]")
+            for check in health.get('checks', []):
+                if not check.get('healthy'):
+                    console.print(f"  - {check.get('name')}: {check.get('message')}")
+
+
+@cli.command()
+@click.argument('bot_type', type=click.Choice(['direct', 'resentment', 'social']))
+@click.option('--priority', '-p', type=int, default=3, help='Prioridad (1=hot, 4=low)')
+def queue(bot_type: str, priority: int):
+    """📥 Añadir trabajo a la cola"""
+    
+    console.print(f"\n[cyan]Añadiendo trabajo a la cola...[/cyan]")
+    
+    from orchestrator import get_orchestrator
+    
+    orchestrator = get_orchestrator()
+    orchestrator.setup()
+    
+    job_id = orchestrator.add_job(bot_type, priority=priority)
+    
+    console.print(f"[green]✓ Job añadido: {job_id}[/green]")
+    console.print(f"  Tipo: {bot_type}")
+    console.print(f"  Prioridad: {priority}")
+
+
 if __name__ == '__main__':
     cli()

@@ -1,0 +1,22 @@
+[Unit]
+Description=BotScrap Worker Autónomo
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/vhosts/territoriodrasanvicr.com/botscrap
+ExecStart=/var/www/vhosts/territoriodrasanvicr.com/botscrap/venv/bin/python worker_daemon.py
+Restart=always
+RestartSec=10
+Environment="PYTHONUNBUFFERED=1"
+
+# Logging
+StandardOutput=append:/var/www/vhosts/territoriodrasanvicr.com/botscrap/logs/worker_daemon.log
+StandardError=append:/var/www/vhosts/territoriodrasanvicr.com/botscrap/logs/worker_daemon.log
+
+# Security
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

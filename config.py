@@ -32,6 +32,7 @@ CX_ID = os.getenv('CX_ID', '')
 
 # === TELEGRAM ===
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', '')
+TELEGRAM_BOT_TOKEN = TELEGRAM_TOKEN  # Alias
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
 
 # === HUNTER.IO ===
@@ -43,6 +44,22 @@ DATAFORSEO_CREDENTIALS = os.getenv('DATAFORSEO_CREDENTIALS', '')
 # === LIMITES ===
 MAX_LEADS_PER_RUN = int(os.getenv('MAX_LEADS_PER_RUN', '10'))
 DAILY_LIMIT = int(os.getenv('DAILY_LIMIT', '50'))
+
+# === WORKER AUTÓNOMO ===
+WORKER_ENABLED = os.getenv('WORKER_ENABLED', 'true').lower() == 'true'
+WORKER_POLL_INTERVAL = int(os.getenv('WORKER_POLL_INTERVAL', '10'))  # segundos
+WORKER_HEARTBEAT_INTERVAL = int(os.getenv('WORKER_HEARTBEAT_INTERVAL', '30'))  # segundos
+
+# === SCHEDULES ===
+SCHEDULER_ENABLED = os.getenv('SCHEDULER_ENABLED', 'true').lower() == 'true'
+
+# === HEALTH MONITOR ===
+HEALTH_CHECK_INTERVAL = int(os.getenv('HEALTH_CHECK_INTERVAL', '60'))  # segundos
+HEARTBEAT_TIMEOUT = int(os.getenv('HEARTBEAT_TIMEOUT', '120'))  # segundos sin heartbeat = problema
+MAX_RECOVERY_ATTEMPTS = int(os.getenv('MAX_RECOVERY_ATTEMPTS', '3'))
+
+# === LOGGING ===
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 # === FILTROS DE VALIDACIÓN ===
 # CMS Filter: 'all', 'wordpress', 'joomla'
