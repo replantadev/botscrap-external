@@ -7,11 +7,17 @@ import re
 import time
 import random
 import logging
+import warnings
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
+import urllib3
+
+# Silenciar warnings de SSL (normal en scraping)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 from config import (
     GOOGLE_API_KEY, CX_ID, 
