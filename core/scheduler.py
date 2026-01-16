@@ -15,7 +15,7 @@ try:
     from apscheduler.schedulers.background import BackgroundScheduler
     from apscheduler.triggers.cron import CronTrigger
     from apscheduler.triggers.interval import IntervalTrigger
-    from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+    from apscheduler.jobstores.memory import MemoryJobStore
     HAS_APSCHEDULER = True
 except ImportError:
     HAS_APSCHEDULER = False
@@ -131,10 +131,11 @@ class BotScheduler:
             logger.warning("Scheduler already running")
             return True
         
-        # Configurar jobstores
-        jobstores = {}
-        if self.db_path:
-            jobstores['default'] = SQLAlchemyJobStore(url=f'sqlite:///{self.db_path}')
+        # Usar MemoryJobStore - nuestra persistencia es vía StateManager
+        # No usamos SQLAlchemyJobStore porque los callbacks contienen objetos no serializables
+        jobstores = {
+            'default': MemoryJobStore()
+        }
         
         self._scheduler = BackgroundScheduler(jobstores=jobstores)
         
