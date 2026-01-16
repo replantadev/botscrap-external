@@ -9,6 +9,15 @@ Bot de generación de leads que se ejecuta en un VPS externo y envía datos a St
   - 😤 **Resentment Hunter**: Caza leads frustrados en Trustpilot/HostAdvice
   - 📡 **Social Signals**: Monitorea redes sociales buscando intención de compra
 
+- **🤖 Worker Autónomo 24/7 (Fase 2):**
+  - ⏰ **Scheduler**: Programación con cron o intervalos
+  - 📋 **Job Queue**: Cola de trabajos con prioridades
+  - 💓 **Health Monitor**: Monitoreo y recovery automático
+  - 📊 **Métricas**: Estadísticas de ejecución
+  - 🔔 **Notificaciones**: Alertas por Telegram
+  - 🛡️ **Rate Limiter**: Control de límites por API
+  - 💾 **Persistencia**: Estado en SQLite
+
 - **✨ Validación y Enriquecimiento (Fase A):**
   - 🔍 Detección de CMS (WordPress, Joomla, otros)
   - ⚡ PageSpeed check (API o fallback rápido)
@@ -20,6 +29,11 @@ Bot de generación de leads que se ejecuta en un VPS externo y envía datos a St
 
 - **🖥️ Panel de Control Web:**
   - Dashboard visual para controlar los bots
+  - **Panel Worker**: Control del worker autónomo
+  - Cola de jobs en tiempo real
+  - Schedules programados
+  - Historial de ejecuciones
+  - Health checks y rate limits
   - Iniciar/detener bots con un click
   - **Filtros avanzados**: CMS, velocidad, eco-only
   - Logs en tiempo real
@@ -231,6 +245,90 @@ crontab -e
 0 3 * * * cd /home/user/botscrap_external && ./venv/bin/python run_bot.py resentment --all-hostings --limit 30 >> logs/cron.log 2>&1
 ```
 
+## 🤖 Worker Autónomo 24/7 (Fase 2)
+
+El worker autónomo permite ejecutar los bots de forma programada sin intervención manual.
+
+### Componentes
+
+| Componente | Descripción |
+|------------|-------------|
+| **StateManager** | Persistencia de estado en SQLite |
+| **JobQueue** | Cola de trabajos con prioridades (HOT → LOW) |
+| **Scheduler** | Programación con expresiones cron o intervalos |
+| **WorkerManager** | Ejecutor de jobs en background |
+| **HealthMonitor** | Watchdog con recovery automático |
+| **RateLimiter** | Control de límites por API |
+| **Notifier** | Alertas por Telegram |
+| **MetricsCollector** | Estadísticas de ejecución |
+
+### Uso CLI
+
+```bash
+# Iniciar worker autónomo
+python run_bot.py worker
+
+# Solo probar configuración
+python run_bot.py worker --test
+
+# Ver estado del sistema
+python run_bot.py status
+
+# Añadir job manual a la cola
+python run_bot.py queue direct --priority 1
+```
+
+### Dashboard Web
+
+Accede a `/panel/worker` para:
+- ▶️ Iniciar/pausar/detener worker
+- 📋 Ver cola de jobs
+- ⏰ Gestionar schedules
+- 📊 Ver historial de ejecuciones
+- 💓 Health checks en tiempo real
+- 📈 Rate limits de APIs
+
+### Schedules por Defecto
+
+| Schedule | Bot | Cron | Descripción |
+|----------|-----|------|-------------|
+| direct_morning | Direct | 0 9 * * 1-5 | Lun-Vie 9:00 |
+| direct_afternoon | Direct | 0 15 * * 1-5 | Lun-Vie 15:00 |
+| resentment_daily | Resentment | 0 10 * * 1-5 | Lun-Vie 10:00 |
+| social_weekly | Social | 0 11 * * 1 | Lunes 11:00 |
+
+### Configuración Worker
+
+```bash
+# === WORKER AUTÓNOMO ===
+WORKER_ENABLED=true
+WORKER_POLL_INTERVAL=10
+WORKER_HEARTBEAT_INTERVAL=30
+
+# === SCHEDULER ===
+SCHEDULER_ENABLED=true
+
+# === HEALTH MONITOR ===
+HEALTH_CHECK_INTERVAL=60
+HEARTBEAT_TIMEOUT=120
+MAX_RECOVERY_ATTEMPTS=3
+```
+
+### Systemd Service (Worker)
+
+```bash
+# Copiar archivo de servicio
+sudo cp botscrap-worker.service /etc/systemd/system/
+
+# Activar
+sudo systemctl daemon-reload
+sudo systemctl enable botscrap-worker
+sudo systemctl start botscrap-worker
+
+# Ver logs
+sudo journalctl -u botscrap-worker -f
+```
+
 ## 📊 Flujo de Datos
 
 ```
@@ -287,6 +385,21 @@ botscrap_external/
 ├── staffkit_client.py    # Cliente API para StaffKit
 ├── run_bot.py            # CLI principal
 ├── test_connection.py    # Test de conexión
+├── webapp.py             # Dashboard web Flask
+│
+├── orchestrator.py       # Orquestador del worker
+├── worker_daemon.py      # Entry point para systemd
+│
+├── core/                 # 🤖 Worker Autónomo (Fase 2)
+│   ├── __init__.py
+│   ├── state_manager.py  # Persistencia SQLite
+│   ├── rate_limiter.py   # Control rate limits
+│   ├── job_queue.py      # Cola de trabajos
+│   ├── scheduler.py      # APScheduler integration
+│   ├── worker.py         # Ejecutor de jobs
+│   ├── health_monitor.py # Watchdog y recovery
+│   ├── notifier.py       # Telegram notifications
+│   └── metrics.py        # Métricas y stats
 │
 ├── bots/
 │   ├── __init__.py
@@ -295,23 +408,26 @@ botscrap_external/
 │   ├── resentment_bot.py # Bot de reviews negativas
 │   └── social_bot.py     # Bot de redes sociales
 │
-├── scrapers/
-│   ├── __init__.py
-│   ├── trustpilot.py     # Scraper Trustpilot
-│   ├── hostadvice.py     # Scraper HostAdvice
-│   └── google_search.py  # Búsqueda Google
-│
 ├── utils/
 │   ├── __init__.py
+│   ├── lead_validator.py # Validación y enriquecimiento (Fase A)
+│   ├── email_enricher.py # Multi-email enrichment
 │   ├── telegram.py       # Notificaciones Telegram
-│   ├── wordpress.py      # Detección WordPress
-│   └── rate_limiter.py   # Control de rate limits
+│   └── wordpress.py      # Detección WordPress
+│
+├── templates/            # Templates HTML
+│   ├── dashboard.html
+│   ├── worker.html       # Dashboard worker autónomo
+│   ├── login.html
+│   └── logs.html
 │
 ├── data/                 # Estado persistente local
-│   └── .gitkeep
+│   ├── worker_state.db   # SQLite state manager
+│   ├── job_queue.db      # SQLite job queue
+│   └── scheduler.db      # APScheduler jobs
 │
 └── logs/                 # Logs de ejecución
-    └── .gitkeep
+    └── worker_daemon.log
 ```
 
 ## 🔐 Seguridad
