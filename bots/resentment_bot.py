@@ -17,7 +17,7 @@ from config import (
     COMPETITOR_HOSTINGS,
     RESENTMENT_KEYWORDS_ES, RESENTMENT_KEYWORDS_EN,
     SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX,
-    HTTP_TIMEOUT, MAX_LEADS_PER_RUN
+    HTTP_TIMEOUT, MAX_LEADS_PER_RUN, LOGS_DIR
 )
 from .base_bot import BaseBot
 
@@ -165,17 +165,29 @@ class ResentmentBot(BaseBot):
                 
                 response = self.session.get(url, headers=self._get_headers(), timeout=HTTP_TIMEOUT)
                 
+                logger.debug(f"Trustpilot response: {response.status_code} for {url}")
+                
                 if response.status_code == 404:
                     logger.warning(f"Dominio no encontrado: {domain}")
                     break
                 
                 if response.status_code == 403:
-                    logger.warning(f"Bloqueado por Trustpilot")
+                    logger.warning(f"Bloqueado por Trustpilot (403)")
+                    break
+                
+                if response.status_code != 200:
+                    logger.warning(f"Error HTTP {response.status_code}")
                     break
                 
                 page_reviews = self._parse_trustpilot_page(response.text, domain)
                 
                 if not page_reviews:
+                    # Debug: guardar HTML para análisis
+                    if page == 1:
+                        debug_file = LOGS_DIR / f"trustpilot_debug_{domain.replace('.', '_')}.html"
+                        with open(debug_file, 'w', encoding='utf-8') as f:
+                            f.write(response.text[:50000])  # Primeros 50KB
+                        logger.warning(f"No se encontraron reviews. HTML guardado en {debug_file}")
                     break
                 
                 reviews.extend(page_reviews)
@@ -190,55 +202,139 @@ class ResentmentBot(BaseBot):
         return reviews[:max_reviews]
     
     def _parse_trustpilot_page(self, html: str, domain: str) -> List[Dict]:
-        """Parsear página de Trustpilot"""
+        """Parsear página de Trustpilot - Selectores actualizados 2026"""
         soup = BeautifulSoup(html, 'html.parser')
         reviews = []
         
-        # Buscar cards de review
-        review_cards = soup.select('[data-service-review-card-paper]')
+        # Múltiples selectores para adaptarse a cambios de Trustpilot
+        review_cards = (
+            soup.select('[data-service-review-card-paper]') or
+            soup.select('article[data-review-id]') or
+            soup.select('div.styles_cardWrapper__LcCPA') or
+            soup.select('[class*="reviewCard"]') or
+            soup.select('article.review') or
+            soup.select('[class*="paper_paper"]')  # Nuevo selector 2026
+        )
         
-        if not review_cards:
-            review_cards = soup.select('article[data-review-id]')
+        logger.debug(f"Encontradas {len(review_cards)} review cards")
         
         for card in review_cards:
             try:
-                # Rating
-                rating_el = card.select_one('[data-rating]')
-                rating = int(rating_el.get('data-rating', 3)) if rating_el else 3
+                # === RATING - múltiples formas ===
+                rating = 3  # default
                 
-                # Solo 1-2 estrellas
+                # Método 1: data-rating
+                rating_el = card.select_one('[data-rating]')
+                if rating_el:
+                    rating = int(rating_el.get('data-rating', 3))
+                else:
+                    # Método 2: imagen de estrellas
+                    star_img = card.select_one('img[alt*="star"], img[alt*="Rated"]')
+                    if star_img:
+                        alt = star_img.get('alt', '')
+                        match = re.search(r'(\d)', alt)
+                        if match:
+                            rating = int(match.group(1))
+                    else:
+                        # Método 3: contar estrellas llenas
+                        filled_stars = card.select('[class*="star"][class*="full"], [data-star-rating]')
+                        if filled_stars:
+                            rating = len(filled_stars)
+                        else:
+                            # Método 4: clase del rating
+                            rating_class = card.select_one('[class*="rating"], [class*="stars"]')
+                            if rating_class:
+                                class_str = ' '.join(rating_class.get('class', []))
+                                match = re.search(r'rating[_-]?(\d)|stars?[_-]?(\d)', class_str)
+                                if match:
+                                    rating = int(match.group(1) or match.group(2))
+                
+                # Solo 1-2 estrellas (reviews negativas)
                 if rating > 2:
                     continue
                 
-                # Autor
-                author_el = card.select_one('[data-consumer-name]')
-                author = author_el.get('data-consumer-name', 'Anónimo') if author_el else 'Anónimo'
+                # === AUTOR - múltiples selectores ===
+                author = 'Anónimo'
+                author_selectors = [
+                    '[data-consumer-name]',
+                    '[class*="consumerName"]',
+                    '[class*="consumer-information"] span',
+                    '[class*="displayname"]',
+                    'span[class*="typography_heading"]',
+                    '.consumer-information__name',
+                ]
+                for sel in author_selectors:
+                    author_el = card.select_one(sel)
+                    if author_el:
+                        if author_el.has_attr('data-consumer-name'):
+                            author = author_el.get('data-consumer-name')
+                        else:
+                            author = author_el.get_text(strip=True)
+                        if author and author != 'Anónimo':
+                            break
                 
-                # Título
-                title_el = card.select_one('h2')
-                title = title_el.get_text(strip=True) if title_el else ''
+                # === TÍTULO ===
+                title = ''
+                title_selectors = ['h2', '[class*="title"]', '[data-review-title]', 'h3']
+                for sel in title_selectors:
+                    title_el = card.select_one(sel)
+                    if title_el:
+                        title = title_el.get_text(strip=True)
+                        if title:
+                            break
                 
-                # Contenido
-                content_el = card.select_one('[data-review-body]')
-                content = content_el.get_text(strip=True) if content_el else ''
+                # === CONTENIDO ===
+                content = ''
+                content_selectors = [
+                    '[data-review-body]',
+                    '[class*="reviewContent"]',
+                    '[class*="review-content"]',
+                    'p[class*="typography_body"]',
+                    '.review-content__text',
+                ]
+                for sel in content_selectors:
+                    content_el = card.select_one(sel)
+                    if content_el:
+                        content = content_el.get_text(strip=True)
+                        if content:
+                            break
                 
-                # Fecha
+                # === FECHA ===
+                date = ''
                 date_el = card.select_one('time')
-                date = date_el.get('datetime', '')[:10] if date_el else ''
+                if date_el:
+                    date = date_el.get('datetime', '')[:10]
+                else:
+                    # Buscar en texto
+                    date_selectors = ['[class*="date"]', '[data-service-review-date-of-experience]']
+                    for sel in date_selectors:
+                        date_el = card.select_one(sel)
+                        if date_el:
+                            date = date_el.get_text(strip=True)[:10]
+                            break
                 
-                # URL
+                # === URL ===
+                review_url = ''
                 link_el = card.select_one('a[href*="/reviews/"]')
-                review_url = f"https://www.trustpilot.com{link_el['href']}" if link_el else ''
+                if link_el:
+                    href = link_el.get('href', '')
+                    if href.startswith('/'):
+                        review_url = f"https://www.trustpilot.com{href}"
+                    else:
+                        review_url = href
                 
-                reviews.append({
-                    'author': author,
-                    'rating': rating,
-                    'title': title,
-                    'content': content,
-                    'date': date,
-                    'url': review_url,
-                    'source': 'trustpilot',
-                })
+                # Solo agregar si tiene contenido útil
+                if title or content:
+                    reviews.append({
+                        'author': author,
+                        'rating': rating,
+                        'title': title,
+                        'content': content,
+                        'date': date,
+                        'url': review_url,
+                        'source': 'trustpilot',
+                    })
+                    logger.debug(f"Review parsed: {author}, {rating}*, {title[:30]}...")
                 
             except Exception as e:
                 logger.debug(f"Error parseando review: {e}")
