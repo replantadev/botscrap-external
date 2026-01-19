@@ -22,9 +22,14 @@ LOGS_DIR.mkdir(exist_ok=True)
 # === STAFFKIT ===
 STAFFKIT_URL = os.getenv('STAFFKIT_URL', '').rstrip('/')
 STAFFKIT_API_KEY = os.getenv('STAFFKIT_API_KEY', '')
-STAFFKIT_LIST_ID = int(os.getenv('STAFFKIT_LIST_ID', '1'))
+STAFFKIT_LIST_ID = int(os.getenv('STAFFKIT_LIST_ID', '1'))  # Lista por defecto
 STAFFKIT_TIMEOUT = int(os.getenv('STAFFKIT_TIMEOUT', '20'))
 STAFFKIT_RETRIES = int(os.getenv('STAFFKIT_RETRIES', '3'))
+
+# Listas específicas por bot (si no se especifican, usan STAFFKIT_LIST_ID)
+DIRECT_LIST_ID = int(os.getenv('DIRECT_LIST_ID', os.getenv('STAFFKIT_LIST_ID', '1')))
+RESENTMENT_LIST_ID = int(os.getenv('RESENTMENT_LIST_ID', os.getenv('STAFFKIT_LIST_ID', '1')))
+SOCIAL_LIST_ID = int(os.getenv('SOCIAL_LIST_ID', os.getenv('STAFFKIT_LIST_ID', '1')))
 
 # === GOOGLE APIs ===
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY', '')
@@ -44,6 +49,11 @@ DATAFORSEO_CREDENTIALS = os.getenv('DATAFORSEO_CREDENTIALS', '')
 # === LIMITES ===
 MAX_LEADS_PER_RUN = int(os.getenv('MAX_LEADS_PER_RUN', '10'))
 DAILY_LIMIT = int(os.getenv('DAILY_LIMIT', '50'))
+
+# Límites diarios por bot (si no se especifican, usan DAILY_LIMIT)
+DIRECT_DAILY_LIMIT = int(os.getenv('DIRECT_DAILY_LIMIT', os.getenv('DAILY_LIMIT', '50')))
+RESENTMENT_DAILY_LIMIT = int(os.getenv('RESENTMENT_DAILY_LIMIT', os.getenv('DAILY_LIMIT', '50')))
+SOCIAL_DAILY_LIMIT = int(os.getenv('SOCIAL_DAILY_LIMIT', os.getenv('DAILY_LIMIT', '50')))
 
 # === WORKER AUTÓNOMO ===
 WORKER_ENABLED = os.getenv('WORKER_ENABLED', 'true').lower() == 'true'

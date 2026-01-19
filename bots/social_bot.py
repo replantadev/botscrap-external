@@ -14,7 +14,8 @@ import requests
 
 from config import (
     SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX,
-    HTTP_TIMEOUT, MAX_LEADS_PER_RUN
+    HTTP_TIMEOUT, MAX_LEADS_PER_RUN,
+    SOCIAL_LIST_ID
 )
 from .base_bot import BaseBot
 
@@ -71,6 +72,9 @@ class SocialBot(BaseBot):
             'vps', 'servidor dedicado', 'kubernetes', 'docker',
             'aws', 'azure', 'google cloud', 'devops',
         ]
+        
+        # Lista específica para Social Bot
+        self.list_id = SOCIAL_LIST_ID
     
     def run(self, sources: List[str] = None, max_leads: int = None, list_id: int = None) -> Dict:
         """

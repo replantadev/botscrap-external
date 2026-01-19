@@ -27,7 +27,9 @@ from config import (
     MAX_LEADS_PER_RUN,
     # Nuevos filtros
     CMS_FILTER, MIN_SPEED_SCORE, MAX_SPEED_SCORE,
-    ECO_VERDE_ONLY, SKIP_PAGESPEED_API
+    ECO_VERDE_ONLY, SKIP_PAGESPEED_API,
+    # Lista específica
+    DIRECT_LIST_ID
 )
 from .base_bot import BaseBot
 from utils.lead_validator import LeadValidator
@@ -61,6 +63,9 @@ class DirectBot(BaseBot):
         # Inicializar validador y enriquecedor
         self.validator = LeadValidator(session=self.session, config=self.validator_config)
         self.email_enricher = EmailEnricher(session=self.session)
+        
+        # Lista específica para Direct Bot
+        self.list_id = DIRECT_LIST_ID
     
     def run(self, query: str, max_leads: int = None, list_id: int = None) -> Dict:
         """

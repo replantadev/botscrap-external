@@ -17,7 +17,8 @@ from config import (
     COMPETITOR_HOSTINGS,
     RESENTMENT_KEYWORDS_ES, RESENTMENT_KEYWORDS_EN,
     SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX,
-    HTTP_TIMEOUT, MAX_LEADS_PER_RUN, LOGS_DIR
+    HTTP_TIMEOUT, MAX_LEADS_PER_RUN, LOGS_DIR,
+    RESENTMENT_LIST_ID
 )
 from .base_bot import BaseBot
 
@@ -65,6 +66,9 @@ class ResentmentBot(BaseBot):
             'recomienden', 'recomiendan', 'alternativas',
             'leaving', 'switching', 'moving', 'alternative',
         ]
+        
+        # Lista específica para Resentment Bot
+        self.list_id = RESENTMENT_LIST_ID
     
     def run(self, hosting: str, max_leads: int = None, list_id: int = None) -> Dict:
         """
