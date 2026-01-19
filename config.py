@@ -46,6 +46,19 @@ HUNTER_KEY = os.getenv('HUNTER_KEY', '')
 # === DATAFORSEO ===
 DATAFORSEO_CREDENTIALS = os.getenv('DATAFORSEO_CREDENTIALS', '')
 
+# === TWITTER/X API ===
+TWITTER_API_KEY = os.getenv('TWITTER_API_KEY', '')
+TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET', '')
+TWITTER_BEARER_TOKEN = os.getenv('TWITTER_BEARER_TOKEN', '')
+
+# === KEYWORDS SOCIAL BOT ===
+# Keywords separadas por comas para cada categoría
+SOCIAL_KEYWORDS_HOSTING = os.getenv('SOCIAL_KEYWORDS_HOSTING', 'hosting lento,mi hosting,problemas hosting,cambiar hosting,hosting malo,hosting caro')
+SOCIAL_KEYWORDS_MIGRATION = os.getenv('SOCIAL_KEYWORDS_MIGRATION', 'migrar wordpress,cambiar hosting,mover web,nuevo hosting,hosting alternativa')
+SOCIAL_KEYWORDS_ECO = os.getenv('SOCIAL_KEYWORDS_ECO', 'hosting ecológico,hosting verde,hosting sostenible,green hosting,carbono neutral')
+SOCIAL_KEYWORDS_WORDPRESS = os.getenv('SOCIAL_KEYWORDS_WORDPRESS', 'ayuda wordpress,problema wordpress,wordpress lento,optimizar wordpress')
+SOCIAL_KEYWORDS_EXCLUDE = os.getenv('SOCIAL_KEYWORDS_EXCLUDE', 'vps,servidor dedicado,kubernetes,docker,aws,azure,google cloud,devops')
+
 # === LIMITES ===
 MAX_LEADS_PER_RUN = int(os.getenv('MAX_LEADS_PER_RUN', '10'))
 DAILY_LIMIT = int(os.getenv('DAILY_LIMIT', '50'))

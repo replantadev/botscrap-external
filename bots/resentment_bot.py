@@ -105,15 +105,27 @@ class ResentmentBot(BaseBot):
             if lead and lead.resentment_score >= 50:
                 # Convertir a dict para guardar
                 lead_dict = {
-                    'web': lead.website_mentioned or '',
+                    'web': lead.website_mentioned or lead.review_url,  # URL de review si no hay website
                     'email': lead.email or '',
-                    'empresa': '',
+                    'empresa': lead.reviewer_name,
                     'contacto': lead.reviewer_name,
-                    'notas': f"Review {lead.rating}★ en {lead.source} sobre {lead.hosting_mentioned}. "
-                             f"Score: {lead.resentment_score}. Keywords: {', '.join(lead.resentment_keywords_found[:3])}. "
-                             f"Intención migración: {'Sí' if lead.migration_intent else 'No'}",
+                    'notas': (
+                        f"🔗 Review URL: {lead.review_url}\n"
+                        f"⭐ Rating: {lead.rating}/5 en {lead.source}\n"
+                        f"🏢 Hosting: {lead.hosting_mentioned}\n"
+                        f"📅 Fecha: {lead.review_date}\n"
+                        f"📊 Score resentimiento: {lead.resentment_score}/100\n"
+                        f"🎯 Intención migración: {'✅ SÍ' if lead.migration_intent else '❌ No'}\n"
+                        f"🔑 Keywords: {', '.join(lead.resentment_keywords_found[:5])}\n\n"
+                        f"💬 Título: {lead.title}\n\n"
+                        f"📝 Contenido: {lead.content[:500]}..."
+                    ),
                     'prioridad': 'hot' if lead.migration_intent else 'alta',
                     'needs_email_enrichment': lead.needs_enrichment,
+                    # Campos extra para investigación manual
+                    'source_url': lead.review_url,
+                    'source_type': 'trustpilot_review',
+                    'reviewer_name': lead.reviewer_name,
                 }
                 
                 result = self.save_lead(lead_dict)

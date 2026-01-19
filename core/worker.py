@@ -189,6 +189,32 @@ class WorkerManager:
             self.state_manager.update_heartbeat()
             self._last_heartbeat = now
     
+    def _send_callback(self, callback_url: str, job_id: str, status: str, result: Dict):
+        """Enviar callback a StaffKit AI Orchestrator"""
+        try:
+            import requests
+            
+            payload = {
+                'job_id': job_id,
+                'status': status,
+                'result': result,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            response = requests.post(
+                callback_url,
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"✅ Callback enviado a {callback_url}")
+            else:
+                logger.warning(f"⚠️ Callback falló: {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error enviando callback: {e}")
+    
     def _execute_job(self, job):
         """Ejecutar un job"""
         from core.job_queue import JobStatus
@@ -233,6 +259,10 @@ class WorkerManager:
             self.state_manager.end_run(run_id, 'completed', stats)
             
             logger.info(f"Job {job.id} completed: {stats['leads_saved']} leads saved in {duration:.1f}s")
+            
+            # Callback a StaffKit si fue ordenado desde allí
+            if job.metadata and job.metadata.get('callback_url'):
+                self._send_callback(job.metadata['callback_url'], job.id, 'completed', stats)
             
             # Notificar si hay leads
             if self.notifier and stats['leads_saved'] > 0:

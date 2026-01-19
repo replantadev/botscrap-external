@@ -15,7 +15,10 @@ import requests
 from config import (
     SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX,
     HTTP_TIMEOUT, MAX_LEADS_PER_RUN,
-    SOCIAL_LIST_ID
+    SOCIAL_LIST_ID, TWITTER_BEARER_TOKEN,
+    SOCIAL_KEYWORDS_HOSTING, SOCIAL_KEYWORDS_MIGRATION,
+    SOCIAL_KEYWORDS_ECO, SOCIAL_KEYWORDS_WORDPRESS,
+    SOCIAL_KEYWORDS_EXCLUDE
 )
 from .base_bot import BaseBot
 
@@ -47,31 +50,16 @@ class SocialBot(BaseBot):
             'User-Agent': 'Mozilla/5.0 (compatible; ReplantaBot/1.0)'
         })
         
-        # Keywords de búsqueda
+        # Keywords de búsqueda (desde config)
         self.keywords = {
-            'hosting_problem': [
-                'hosting lento', 'mi hosting', 'problemas hosting',
-                'cambiar hosting', 'hosting malo', 'hosting caro',
-            ],
-            'migration': [
-                'migrar wordpress', 'cambiar hosting', 'mover web',
-                'nuevo hosting', 'hosting alternativa',
-            ],
-            'eco_hosting': [
-                'hosting ecológico', 'hosting verde', 'hosting sostenible',
-                'green hosting', 'carbono neutral',
-            ],
-            'wordpress_help': [
-                'ayuda wordpress', 'problema wordpress', 'wordpress lento',
-                'optimizar wordpress',
-            ],
+            'hosting_problem': [kw.strip() for kw in SOCIAL_KEYWORDS_HOSTING.split(',')],
+            'migration': [kw.strip() for kw in SOCIAL_KEYWORDS_MIGRATION.split(',')],
+            'eco_hosting': [kw.strip() for kw in SOCIAL_KEYWORDS_ECO.split(',')],
+            'wordpress_help': [kw.strip() for kw in SOCIAL_KEYWORDS_WORDPRESS.split(',')],
         }
         
         # Keywords negativas (descartar)
-        self.exclude_keywords = [
-            'vps', 'servidor dedicado', 'kubernetes', 'docker',
-            'aws', 'azure', 'google cloud', 'devops',
-        ]
+        self.exclude_keywords = [kw.strip() for kw in SOCIAL_KEYWORDS_EXCLUDE.split(',')]
         
         # Lista específica para Social Bot
         self.list_id = SOCIAL_LIST_ID
@@ -99,7 +87,12 @@ class SocialBot(BaseBot):
                 leads = self._search_reddit(max_results=max_leads)
                 all_leads.extend(leads)
             elif source == 'twitter':
-                logger.warning("Twitter scraping requiere API de pago")
+                from config import TWITTER_BEARER_TOKEN
+                if TWITTER_BEARER_TOKEN:
+                    leads = self._search_twitter(max_results=max_leads)
+                    all_leads.extend(leads)
+                else:
+                    logger.warning("Twitter API no configurada (falta TWITTER_BEARER_TOKEN)")
             else:
                 logger.warning(f"Fuente no soportada: {source}")
             
@@ -116,14 +109,24 @@ class SocialBot(BaseBot):
             
             if lead.score >= 50:
                 lead_dict = {
-                    'web': lead.website or '',
+                    'web': lead.website or lead.post_url,  # URL del post si no hay website
                     'email': lead.email or '',
+                    'empresa': lead.author,
                     'contacto': lead.author,
-                    'notas': f"Social lead de {lead.source}. Score: {lead.score}. "
-                             f"Keywords: {', '.join(lead.keywords_found[:3])}. "
-                             f"URL: {lead.post_url}",
+                    'notas': (
+                        f"🔗 Post URL: {lead.post_url}\n"
+                        f"👤 Autor: {lead.author}\n"
+                        f"📱 Fuente: {lead.source}\n"
+                        f"📊 Score interés: {lead.score}/100\n"
+                        f"🔑 Keywords: {', '.join(lead.keywords_found[:5])}\n\n"
+                        f"💬 Contenido:\n{lead.content[:500]}..."
+                    ),
                     'prioridad': 'hot' if lead.score >= 80 else 'alta',
                     'needs_email_enrichment': True,
+                    # Campos extra para investigación manual
+                    'source_url': lead.post_url,
+                    'source_type': f'{lead.source}_post',
+                    'author_url': lead.author_url,
                 }
                 
                 result = self.save_lead(lead_dict)
@@ -253,3 +256,96 @@ class SocialBot(BaseBot):
                     return domain
         
         return None
+    
+    def _search_twitter(self, keywords: List[str]) -> List[SocialLead]:
+        """Buscar en Twitter API v2"""
+        if not TWITTER_BEARER_TOKEN:
+            logging.warning("⚠️ Twitter API no configurado (falta TWITTER_BEARER_TOKEN)")
+            return []
+        
+        results = []
+        
+        try:
+            import requests
+            
+            # Endpoint de búsqueda reciente (últimos 7 días)
+            url = "https://api.twitter.com/2/tweets/search/recent"
+            headers = {
+                "Authorization": f"Bearer {TWITTER_BEARER_TOKEN}",
+                "Content-Type": "application/json"
+            }
+            
+            # Construir query con keywords
+            query_parts = []
+            for keyword in keywords[:3]:  # Limitar a 3 keywords para no exceder límite de API
+                query_parts.append(keyword)
+            
+            query = " OR ".join(query_parts) + " -is:retweet lang:es"
+            
+            params = {
+                "query": query,
+                "max_results": 50,
+                "tweet.fields": "created_at,public_metrics,author_id",
+                "expansions": "author_id",
+                "user.fields": "username,name"
+            }
+            
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+            
+            if response.status_code == 401:
+                logging.error("❌ Twitter API: Token inválido o expirado")
+                return []
+            elif response.status_code == 429:
+                logging.warning("⚠️ Twitter API: Rate limit alcanzado")
+                return []
+            elif response.status_code != 200:
+                logging.error(f"❌ Twitter API error {response.status_code}: {response.text}")
+                return []
+            
+            data = response.json()
+            tweets = data.get('data', [])
+            users = {u['id']: u for u in data.get('includes', {}).get('users', [])}
+            
+            logging.info(f"🐦 Twitter: {len(tweets)} tweets encontrados")
+            
+            for tweet in tweets:
+                text = tweet.get('text', '')
+                author_id = tweet.get('author_id')
+                author_data = users.get(author_id, {})
+                username = author_data.get('username', 'unknown')
+                
+                # Calcular score básico
+                score = self._calculate_social_score(text, keywords)
+                
+                if score < 30:  # Umbral mínimo
+                    continue
+                
+                # Identificar keywords encontradas
+                keywords_found = [kw for kw in keywords if kw.lower() in text.lower()]
+                
+                # Extraer website si se menciona
+                website = self._extract_website(text)
+                
+                lead = SocialLead(
+                    author=author_data.get('name', username),
+                    author_url=f"https://twitter.com/{username}",
+                    post_url=f"https://twitter.com/{username}/status/{tweet['id']}",
+                    content=text[:500],
+                    source='twitter',
+                    score=min(score, 100),
+                    keywords_found=keywords_found,
+                    website=website,
+                )
+                
+                results.append(lead)
+            
+            logging.info(f"✅ Twitter: {len(results)} leads después de filtros")
+            
+        except requests.exceptions.Timeout:
+            logging.error("⏱️ Twitter API: Timeout")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"❌ Twitter API error de conexión: {e}")
+        except Exception as e:
+            logging.error(f"❌ Error procesando Twitter: {e}", exc_info=True)
+        
+        return results

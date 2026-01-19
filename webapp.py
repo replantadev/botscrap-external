@@ -847,6 +847,178 @@ def api_run_history():
         return jsonify({'error': str(e)}), 500
 
 
+# === API EXTERNA (para StaffKit AI Orchestrator) ===
+
+@app.route('/api/execute-search', methods=['POST'])
+def api_execute_search():
+    """
+    API externa para recibir órdenes de búsqueda desde StaffKit AI Orchestrator
+    
+    Headers requeridos:
+        X-API-Key: API key para autenticación
+    
+    Body JSON:
+        {
+            "bot_type": "direct|resentment|social",
+            "list_id": 123,
+            "max_leads": 10,
+            "keywords": ["keyword1", "keyword2"],  # opcional para social bot
+            "priority": "high|normal|low",  # opcional
+            "callback_url": "https://staff.replanta.dev/api/bot-result"  # opcional
+        }
+    
+    Response:
+        {
+            "success": true,
+            "job_id": "uuid-xxx-xxx",
+            "message": "Búsqueda programada",
+            "estimated_time": "5 minutos"
+        }
+    """
+    from config import STAFFKIT_API_KEY
+    
+    # Verificar API Key
+    api_key = request.headers.get('X-API-Key')
+    if not api_key or api_key != STAFFKIT_API_KEY:
+        return jsonify({
+            'success': False,
+            'error': 'API Key inválida o faltante'
+        }), 401
+    
+    # Validar request
+    data = request.get_json()
+    if not data:
+        return jsonify({
+            'success': False,
+            'error': 'Body JSON requerido'
+        }), 400
+    
+    bot_type = data.get('bot_type')
+    if not bot_type or bot_type not in ['direct', 'resentment', 'social']:
+        return jsonify({
+            'success': False,
+            'error': 'bot_type inválido. Debe ser: direct, resentment o social'
+        }), 400
+    
+    list_id = data.get('list_id')
+    if not list_id:
+        return jsonify({
+            'success': False,
+            'error': 'list_id requerido'
+        }), 400
+    
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        # Crear job en la cola
+        priority = data.get('priority', 'normal')
+        max_leads = data.get('max_leads', 10)
+        keywords = data.get('keywords')
+        callback_url = data.get('callback_url')
+        
+        # Metadatos adicionales
+        metadata = {
+            'source': 'staffkit_ai',
+            'callback_url': callback_url,
+            'keywords': keywords
+        }
+        
+        job = orchestrator.job_queue.create_job(
+            bot_type=bot_type,
+            params={
+                'list_id': list_id,
+                'max_leads': max_leads,
+                'keywords': keywords
+            },
+            priority=priority,
+            metadata=metadata
+        )
+        
+        return jsonify({
+            'success': True,
+            'job_id': job.id,
+            'message': f'Búsqueda de {bot_type} programada',
+            'estimated_time': '5-10 minutos',
+            'status': job.status
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/job-status/<job_id>', methods=['GET'])
+def api_job_status(job_id):
+    """
+    API externa para consultar estado de un job
+    
+    Headers requeridos:
+        X-API-Key: API key para autenticación
+    
+    Response:
+        {
+            "success": true,
+            "job": {
+                "id": "uuid",
+                "status": "completed",
+                "progress": 100,
+                "results": {...}
+            }
+        }
+    """
+    from config import STAFFKIT_API_KEY
+    
+    # Verificar API Key
+    api_key = request.headers.get('X-API-Key')
+    if not api_key or api_key != STAFFKIT_API_KEY:
+        return jsonify({
+            'success': False,
+            'error': 'API Key inválida o faltante'
+        }), 401
+    
+    try:
+        from orchestrator import get_orchestrator
+        orchestrator = get_orchestrator()
+        
+        if not orchestrator._components_initialized:
+            orchestrator.setup()
+        
+        job = orchestrator.job_queue.get_job(job_id)
+        
+        if not job:
+            return jsonify({
+                'success': False,
+                'error': 'Job no encontrado'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'job': {
+                'id': job.id,
+                'bot_type': job.bot_type,
+                'status': job.status,
+                'progress': job.progress,
+                'created_at': job.created_at.isoformat(),
+                'started_at': job.started_at.isoformat() if job.started_at else None,
+                'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+                'result': job.result,
+                'error': job.error
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     # Crear directorios
     LOGS_DIR.mkdir(exist_ok=True)
