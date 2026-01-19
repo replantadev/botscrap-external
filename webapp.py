@@ -302,6 +302,55 @@ def api_lists():
     })
 
 
+@app.route(f'{ACCESS_PATH}/api/set-list', methods=['POST'])
+@require_auth
+def api_set_list():
+    """API: Cambiar lista destino activa"""
+    try:
+        data = request.get_json()
+        list_id = data.get('list_id')
+        
+        if not list_id:
+            return jsonify({'success': False, 'error': 'list_id requerido'}), 400
+        
+        # Actualizar en .env
+        env_path = BASE_DIR / '.env'
+        if not env_path.exists():
+            return jsonify({'success': False, 'error': '.env no encontrado'}), 500
+        
+        # Leer .env
+        with open(env_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Actualizar línea STAFFKIT_LIST_ID
+        updated = False
+        for i, line in enumerate(lines):
+            if line.startswith('STAFFKIT_LIST_ID='):
+                lines[i] = f'STAFFKIT_LIST_ID={list_id}\n'
+                updated = True
+                break
+        
+        # Si no existe, añadir
+        if not updated:
+            lines.append(f'\nSTAFFKIT_LIST_ID={list_id}\n')
+        
+        # Guardar
+        with open(env_path, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+        
+        # Recargar variable de entorno
+        os.environ['STAFFKIT_LIST_ID'] = str(list_id)
+        
+        return jsonify({
+            'success': True,
+            'list_id': list_id,
+            'message': f'Lista destino actualizada a ID {list_id}'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route(f'{ACCESS_PATH}/api/logs/<bot_type>/stream')
 @require_auth
 def api_logs_stream(bot_type: str):

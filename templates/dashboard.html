@@ -512,9 +512,16 @@
             <div class="status-item">
                 <label style="display: flex; align-items: center; gap: 8px;">
                     📋 Lista destino:
-                    <select id="target-list" style="padding: 4px 8px; border-radius: 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569;">
+                    <select id="target-list" style="padding: 4px 8px; border-radius: 4px; background: #334155; color: #e2e8f0; border: 1px solid #475569;" onchange="markListChanged()">
                         <option value="">Cargando...</option>
                     </select>
+                    <button class="btn btn-primary" id="btn-save-list" onclick="saveListSelection()" style="display: none; padding: 4px 12px; font-size: 13px;">
+                        💾 Guardar
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadLists()" style="padding: 4px 8px; font-size: 13px;" title="Refrescar listas">
+                        🔄
+                    </button>
+                    <span id="list-saved-indicator" style="color: #4ade80; font-size: 13px; display: none;">✓ Guardado</span>
                 </label>
             </div>
             <div class="status-item">
@@ -1118,16 +1125,75 @@
                 
                 if (data.lists && data.lists.length > 0) {
                     select.innerHTML = data.lists.map(list => 
-                        `<option value="${list.id}" ${list.id == data.default_list ? 'selected' : ''}>
-                            ${list.name} (ID: ${list.id})
+                        `<option value="${list.id}" ${list.id == data.default_list ? 'selected' : ''} data-description="${list.description || ''}">
+                            ${list.name}
                         </option>`
                     ).join('');
+                    
+                    // Ocultar indicadores después de cargar
+                    document.getElementById('btn-save-list').style.display = 'none';
+                    document.getElementById('list-saved-indicator').style.display = 'none';
                 } else {
                     select.innerHTML = `<option value="${data.default_list}">Lista por defecto (ID: ${data.default_list})</option>`;
                 }
             } catch (error) {
                 console.error('Error loading lists:', error);
                 select.innerHTML = '<option value="1">Lista 1 (default)</option>';
+                showToast('⚠️ Error cargando listas', 'error');
+            }
+        }
+
+        // Marcar que la lista ha cambiado
+        function markListChanged() {
+            document.getElementById('btn-save-list').style.display = 'inline-block';
+            document.getElementById('list-saved-indicator').style.display = 'none';
+        }
+
+        // Guardar selección de lista
+        async function saveListSelection() {
+            const select = document.getElementById('target-list');
+            const listId = select.value;
+            const btnSave = document.getElementById('btn-save-list');
+            const indicator = document.getElementById('list-saved-indicator');
+            
+            if (!listId) {
+                showToast('⚠️ Selecciona una lista', 'error');
+                return;
+            }
+            
+            try {
+                btnSave.textContent = '⏳ Guardando...';
+                btnSave.disabled = true;
+                
+                const response = await fetch(`${ACCESS_PATH}/api/set-list`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ list_id: listId })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    btnSave.style.display = 'none';
+                    indicator.style.display = 'inline-block';
+                    showToast('✅ Lista actualizada correctamente', 'success');
+                    
+                    // Ocultar indicador después de 3 segundos
+                    setTimeout(() => {
+                        indicator.style.display = 'none';
+                    }, 3000);
+                    
+                    // Recargar configuración
+                    loadConfig();
+                } else {
+                    showToast('❌ Error: ' + (result.error || 'No se pudo guardar'), 'error');
+                }
+            } catch (error) {
+                console.error('Error saving list:', error);
+                showToast('❌ Error guardando lista', 'error');
+            } finally {
+                btnSave.textContent = '💾 Guardar';
+                btnSave.disabled = false;
             }
         }
 
