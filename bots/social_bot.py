@@ -64,7 +64,7 @@ class SocialBot(BaseBot):
         # Lista específica para Social Bot
         self.list_id = SOCIAL_LIST_ID
     
-    def run(self, sources: List[str] = None, max_leads: int = None, list_id: int = None) -> Dict:
+    def run(self, sources: List[str] = None, max_leads: int = None, list_id: int = None, keywords: str = None) -> Dict:
         """
         Buscar leads en redes sociales
         
@@ -72,11 +72,18 @@ class SocialBot(BaseBot):
             sources: Lista de fuentes ['reddit', 'twitter']
             max_leads: Máximo de leads
             list_id: ID de lista destino
+            keywords: Keywords personalizadas (string separado por comas)
         """
         sources = sources or ['reddit']
         max_leads = max_leads or MAX_LEADS_PER_RUN
         if list_id:
             self.list_id = list_id
+        
+        # Si se proveen keywords personalizadas, sobreescribir las del config
+        if keywords:
+            custom_keywords = [kw.strip() for kw in keywords.split(',')]
+            self.keywords = {'custom': custom_keywords}
+            logger.info(f"🔑 Usando keywords personalizadas: {custom_keywords}")
         
         logger.info(f"📡 Social Signals Bot - Fuentes: {sources}")
         

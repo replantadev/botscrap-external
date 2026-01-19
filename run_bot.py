@@ -124,12 +124,15 @@ def resentment(hosting: str, all_hostings: bool, limit: int, list_id: int, dry_r
 @click.option('--sources', '-s', default='reddit', help='Fuentes: reddit,twitter (separadas por coma)')
 @click.option('--limit', '-l', default=15, help='Número máximo de leads')
 @click.option('--list-id', type=int, help='ID de lista en StaffKit')
+@click.option('--keywords', '-k', help='Keywords personalizadas (separadas por comas)')
 @click.option('--dry-run', is_flag=True, help='No guardar, solo mostrar resultados')
-def social(sources: str, limit: int, list_id: int, dry_run: bool):
+def social(sources: str, limit: int, list_id: int, keywords: str, dry_run: bool):
     """📡 Social Signals - Monitorea redes sociales"""
     
     console.print(f"\n[bold cyan]📡 Social Signals Bot - BotScrap External[/bold cyan]")
     console.print(f"Fuentes: [cyan]{sources}[/cyan]")
+    if keywords:
+        console.print(f"Keywords: [cyan]{keywords}[/cyan]")
     
     validation = validate_config()
     if not validation['valid']:
@@ -141,7 +144,7 @@ def social(sources: str, limit: int, list_id: int, dry_run: bool):
     source_list = [s.strip() for s in sources.split(',')]
     
     bot = SocialBot(dry_run=dry_run)
-    results = bot.run(sources=source_list, max_leads=limit, list_id=list_id)
+    results = bot.run(sources=source_list, max_leads=limit, list_id=list_id, keywords=keywords)
     
     console.print(f"\n[green]✅ Completado:[/green]")
     console.print(f"   Encontrados: {results.get('leads_found', 0)}")

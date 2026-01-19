@@ -668,6 +668,12 @@
                         <div class="form-row">
                             <input type="number" id="social-limit" placeholder="Límite" value="15" min="1" max="50">
                         </div>
+                        <div class="form-row">
+                            <input type="text" id="social-keywords" placeholder="Keywords personalizadas (separadas por comas)" style="font-size: 13px;">
+                            <small style="color: #888; font-size: 11px; margin-top: 4px; display: block;">
+                                Ejemplo: hosting lento, migrar wordpress, hosting verde
+                            </small>
+                        </div>
                     </div>
                     <div class="bot-actions">
                         <button class="btn btn-start" onclick="startBot('social')">▶ Iniciar</button>
@@ -982,7 +988,11 @@
             } else if (botType === 'social') {
                 const source = document.getElementById('social-source').value;
                 const limit = document.getElementById('social-limit').value;
+                const keywords = document.getElementById('social-keywords').value;
                 args.push('--sources', source, '--limit', limit);
+                if (keywords.trim()) {
+                    args.push('--keywords', keywords);
+                }
             }
             
             try {
