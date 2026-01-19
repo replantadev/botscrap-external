@@ -211,14 +211,21 @@ class BotScheduler:
         
         logger.info(f"Schedule triggered: {schedule_id}")
         
-        # Verificar límites diarios
-        from config import DAILY_LIMIT
-        if not self.state_manager.can_run_today(sched.bot_type, DAILY_LIMIT):
-            logger.warning(f"Schedule {schedule_id} skipped: daily limit reached")
+        # Verificar límites diarios con límite específico del bot
+        from config import get_daily_limit, AUTO_RETRY_ENABLED, AUTO_RETRY_INTERVAL, AUTO_RETRY_MAX_HOUR
+        
+        daily_limit = get_daily_limit(sched.bot_type)
+        leads_today = self.state_manager.get_leads_today(sched.bot_type)
+        remaining = daily_limit - leads_today
+        
+        if remaining <= 0:
+            logger.info(f"✅ Schedule {schedule_id} skipped: daily goal reached ({leads_today}/{daily_limit})")
             return
         
+        logger.info(f"📊 {sched.bot_type}: {leads_today}/{daily_limit} leads hoy, faltan {remaining}")
+        
         # Crear job en la cola
-        self.job_queue.create(
+        job_id = self.job_queue.create(
             bot_type=sched.bot_type,
             params=sched.params or {},
             priority=sched.priority,
@@ -239,9 +246,37 @@ class BotScheduler:
         self.state_manager.log_event(
             'schedule_triggered', 
             sched.bot_type,
-            f'Schedule {schedule_id} triggered',
-            {'schedule_id': schedule_id}
+            f'Schedule {schedule_id} triggered (job {job_id})',
+            {'schedule_id': schedule_id, 'job_id': job_id, 'leads_today': leads_today, 'goal': daily_limit}
         )
+        
+        # Auto-retry: Programar re-ejecución si está habilitado y es temprano
+        if AUTO_RETRY_ENABLED and remaining > 0:
+            current_hour = datetime.now().hour
+            if current_hour < AUTO_RETRY_MAX_HOUR:
+                self._schedule_retry(sched.bot_type, schedule_id, AUTO_RETRY_INTERVAL)
+    
+    def _schedule_retry(self, bot_type: str, schedule_id: str, minutes: int):
+        """Programar re-ejecución automática"""
+        retry_id = f"{schedule_id}_retry"
+        
+        # Eliminar retry anterior si existe
+        if self._scheduler and self._scheduler.get_job(retry_id):
+            self._scheduler.remove_job(retry_id)
+        
+        # Programar nuevo retry
+        if self._scheduler:
+            run_time = datetime.now() + timedelta(minutes=minutes)
+            self._scheduler.add_job(
+                self._trigger_scheduled_job,
+                'date',
+                run_date=run_time,
+                args=[schedule_id],
+                id=retry_id,
+                replace_existing=True,
+                name=f"Retry {schedule_id}"
+            )
+            logger.info(f"🔄 Auto-retry programado para {bot_type} en {minutes} minutos ({run_time.strftime('%H:%M')})")
     
     def _maintenance_job(self):
         """Job de mantenimiento periódico"""

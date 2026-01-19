@@ -63,6 +63,11 @@ WORKER_HEARTBEAT_INTERVAL = int(os.getenv('WORKER_HEARTBEAT_INTERVAL', '30'))  #
 # === SCHEDULES ===
 SCHEDULER_ENABLED = os.getenv('SCHEDULER_ENABLED', 'true').lower() == 'true'
 
+# Auto-retry: Re-ejecutar bots hasta alcanzar objetivo diario
+AUTO_RETRY_ENABLED = os.getenv('AUTO_RETRY_ENABLED', 'true').lower() == 'true'
+AUTO_RETRY_INTERVAL = int(os.getenv('AUTO_RETRY_INTERVAL', '120'))  # minutos entre re-intentos
+AUTO_RETRY_MAX_HOUR = int(os.getenv('AUTO_RETRY_MAX_HOUR', '20'))  # no ejecutar después de esta hora
+
 # === HEALTH MONITOR ===
 HEALTH_CHECK_INTERVAL = int(os.getenv('HEALTH_CHECK_INTERVAL', '60'))  # segundos
 HEARTBEAT_TIMEOUT = int(os.getenv('HEARTBEAT_TIMEOUT', '120'))  # segundos sin heartbeat = problema
@@ -197,6 +202,26 @@ SOCIAL_MEDIA_DOMAINS = {
     'wordpress.com', 'wix.com', 'weebly.com', 'medium.com',
     'blogspot.com', 'tumblr.com', 'linktr.ee', 'bit.ly',
 }
+
+
+def get_daily_limit(bot_type: str) -> int:
+    """Obtener límite diario específico para un tipo de bot"""
+    limits = {
+        'direct': DIRECT_DAILY_LIMIT,
+        'resentment': RESENTMENT_DAILY_LIMIT,
+        'social': SOCIAL_DAILY_LIMIT,
+    }
+    return limits.get(bot_type, DAILY_LIMIT)
+
+
+def get_list_id(bot_type: str) -> int:
+    """Obtener lista específica para un tipo de bot"""
+    lists = {
+        'direct': DIRECT_LIST_ID,
+        'resentment': RESENTMENT_LIST_ID,
+        'social': SOCIAL_LIST_ID,
+    }
+    return lists.get(bot_type, STAFFKIT_LIST_ID)
 
 
 def validate_config() -> dict:
