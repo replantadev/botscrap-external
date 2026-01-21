@@ -18,9 +18,10 @@ from config import (
     RESENTMENT_KEYWORDS_ES, RESENTMENT_KEYWORDS_EN,
     SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX,
     HTTP_TIMEOUT, MAX_LEADS_PER_RUN, LOGS_DIR,
-    RESENTMENT_LIST_ID
+    RESENTMENT_LIST_ID, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 )
 from .base_bot import BaseBot
+from telegram_notifier import TelegramNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class ResentmentBot(BaseBot):
         super().__init__(dry_run=dry_run)
         
         self.session = requests.Session()
+        self.telegram = TelegramNotifier()
         
         # Keywords de migración (alta intención)
         self.migration_keywords = [
@@ -69,6 +71,9 @@ class ResentmentBot(BaseBot):
         
         # Lista específica para Resentment Bot
         self.list_id = RESENTMENT_LIST_ID
+        
+        # Leads encontrados para tracking
+        self.leads_collected = []
     
     def run(self, hosting: str, max_leads: int = None, list_id: int = None) -> Dict:
         """
@@ -85,56 +90,113 @@ class ResentmentBot(BaseBot):
         hosting_info = COMPETITOR_HOSTINGS[hosting]
         logger.info(f"😤 Resentment Hunter - Buscando reviews de {hosting_info['name']}")
         
+        # Notificar inicio
+        self.telegram.send(f"🔍 Resentment Bot: Buscando en {hosting_info['name']}...")
+        
         # Scrape Trustpilot
         reviews = self._scrape_trustpilot(
             domain=hosting_info['trustpilot'],
-            max_reviews=max_leads * 2
+            max_reviews=max_leads * 3  # Obtener más para filtrar
         )
         
         logger.info(f"📊 Encontradas {len(reviews)} reviews negativas")
         
         # Analizar y filtrar
-        leads_saved = 0
+        leads_analyzed = 0
+        leads_qualified = 0
         
         for review in reviews:
-            if leads_saved >= max_leads:
+            if self.stats['leads_saved'] >= max_leads:
                 break
             
+            leads_analyzed += 1
             lead = self._analyze_review(review, hosting_info['name'])
             
-            if lead and lead.resentment_score >= 50:
-                # Convertir a dict para guardar
-                lead_dict = {
-                    'web': lead.website_mentioned or lead.review_url,  # URL de review si no hay website
-                    'email': lead.email or '',
-                    'empresa': lead.reviewer_name,
-                    'contacto': lead.reviewer_name,
-                    'notas': (
-                        f"🔗 Review URL: {lead.review_url}\n"
-                        f"⭐ Rating: {lead.rating}/5 en {lead.source}\n"
-                        f"🏢 Hosting: {lead.hosting_mentioned}\n"
-                        f"📅 Fecha: {lead.review_date}\n"
-                        f"📊 Score resentimiento: {lead.resentment_score}/100\n"
-                        f"🎯 Intención migración: {'✅ SÍ' if lead.migration_intent else '❌ No'}\n"
-                        f"🔑 Keywords: {', '.join(lead.resentment_keywords_found[:5])}\n\n"
-                        f"💬 Título: {lead.title}\n\n"
-                        f"📝 Contenido: {lead.content[:500]}..."
-                    ),
-                    'prioridad': 'hot' if lead.migration_intent else 'alta',
-                    'needs_email_enrichment': lead.needs_enrichment,
-                    # Campos extra para investigación manual
-                    'source_url': lead.review_url,
-                    'source_type': 'trustpilot_review',
-                    'reviewer_name': lead.reviewer_name,
-                }
-                
-                result = self.save_lead(lead_dict)
-                
-                if result.get('success') and result.get('status') != 'duplicate':
-                    leads_saved += 1
-                    logger.info(f"✅ Lead #{leads_saved}: Score {lead.resentment_score}, Intent: {lead.migration_intent}")
+            if not lead:
+                logger.debug(f"  ⊘ Review sin keywords relevantes: {review.get('title', '')[:30]}")
+                continue
+            
+            if lead.resentment_score < 50:
+                logger.debug(f"  ⊘ Score bajo ({lead.resentment_score}): {review.get('title', '')[:30]}")
+                continue
+            
+            leads_qualified += 1
+            self.stats['leads_found'] += 1
+            
+            # Convertir a dict para guardar
+            lead_dict = {
+                'web': lead.website_mentioned or lead.review_url,
+                'email': lead.email or '',
+                'empresa': f"Cliente {hosting_info['name']}",
+                'contacto': lead.reviewer_name,
+                'hosting': hosting_info['name'],
+                'puntuacion': lead.resentment_score,
+                'notas': (
+                    f"Review {lead.rating}★ en trustpilot sobre {hosting_info['name']}. "
+                    f"Score: {lead.resentment_score}. "
+                    f"Keywords: {', '.join(lead.resentment_keywords_found[:3])}. "
+                    f"Intención migración: {'Sí' if lead.migration_intent else 'No'}\n\n"
+                    f"📅 Fecha: {lead.review_date}\n"
+                    f"💬 Título: {lead.title}\n"
+                    f"📝 Contenido: {lead.content[:300]}...\n"
+                    f"🔗 {lead.review_url}"
+                ),
+                'prioridad': 'hot' if lead.migration_intent else 'alta',
+                'needs_email_enrichment': lead.needs_enrichment,
+            }
+            
+            self.leads_collected.append(lead_dict)
+            result = self.save_lead(lead_dict)
+            
+            if result.get('success'):
+                status = result.get('status', 'saved')
+                if status == 'duplicate':
+                    logger.info(f"  ⚡ Duplicado: {lead.reviewer_name} (Score: {lead.resentment_score})")
+                else:
+                    logger.info(f"  ✅ Lead #{self.stats['leads_saved']}: {lead.reviewer_name} (Score: {lead.resentment_score}, Intent: {lead.migration_intent})")
+            else:
+                logger.warning(f"  ❌ Error: {result.get('error')}")
+        
+        # Log resumen
+        logger.info(f"📊 Resumen: {leads_analyzed} analizadas, {leads_qualified} calificadas, {self.stats['leads_saved']} guardadas")
+        
+        # Notificar resultado a Telegram
+        self._send_telegram_summary(hosting_info['name'])
         
         return self.get_stats()
+    
+    def _send_telegram_summary(self, hosting_name: str):
+        """Enviar resumen a Telegram"""
+        stats = self.stats
+        
+        if stats['leads_saved'] > 0:
+            msg = (
+                f"✅ Resentment Bot completado\n\n"
+                f"🏢 Hosting: {hosting_name}\n"
+                f"📊 Encontrados: {stats['leads_found']}\n"
+                f"💾 Guardados: {stats['leads_saved']}\n"
+                f"🔄 Duplicados: {stats['leads_duplicates']}\n"
+            )
+            
+            # Agregar detalles de los primeros leads
+            if self.leads_collected:
+                msg += "\n📋 Leads guardados:\n"
+                for i, lead in enumerate(self.leads_collected[:5], 1):
+                    score = lead.get('puntuacion', 0)
+                    name = lead.get('contacto', 'N/A')
+                    msg += f"  {i}. {name} (Score: {score})\n"
+                    
+                if len(self.leads_collected) > 5:
+                    msg += f"  ... y {len(self.leads_collected) - 5} más\n"
+        else:
+            msg = (
+                f"⚠️ Resentment Bot: Sin leads nuevos\n\n"
+                f"🏢 Hosting: {hosting_name}\n"
+                f"📊 Reviews analizadas: {stats['leads_found']}\n"
+                f"🔄 Duplicados: {stats['leads_duplicates']}\n"
+            )
+        
+        self.telegram.send(msg)
     
     def run_all(self, max_leads: int = None, list_id: int = None) -> Dict:
         """Buscar en todos los hostings conocidos"""
