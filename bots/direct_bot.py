@@ -37,6 +37,18 @@ from utils.email_enricher import EmailEnricher
 
 logger = logging.getLogger(__name__)
 
+# Mapeo de países a ciudades
+COUNTRY_CITIES = {
+    'ES': ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Málaga', 'Bilbao'],
+    'MX': ['Ciudad de México', 'Guadalajara', 'Monterrey', 'Puebla', 'Tijuana'],
+    'CO': ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Cartagena'],
+    'AR': ['Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza'],
+    'CL': ['Santiago', 'Valparaíso', 'Concepción'],
+    'PE': ['Lima', 'Arequipa', 'Trujillo', 'Cusco'],
+    'US': ['New York', 'Los Angeles', 'Miami', 'Houston', 'Chicago'],
+    'UK': ['London', 'Manchester', 'Birmingham', 'Leeds'],
+}
+
 
 class DirectBot(BaseBot):
     """Bot de búsqueda directa en Google con validación completa"""
@@ -60,6 +72,10 @@ class DirectBot(BaseBot):
             'google_api_key': GOOGLE_API_KEY,
         }
         
+        # Configuración de país
+        self.country = config.get('country', 'ES')
+        self.cities = COUNTRY_CITIES.get(self.country, COUNTRY_CITIES['ES'])
+        
         # Inicializar validador y enriquecedor
         self.validator = LeadValidator(session=self.session, config=self.validator_config)
         self.email_enricher = EmailEnricher(session=self.session)
@@ -67,23 +83,43 @@ class DirectBot(BaseBot):
         # Lista específica para Direct Bot
         self.list_id = DIRECT_LIST_ID
     
-    def run(self, query: str, max_leads: int = None, list_id: int = None) -> Dict:
+    def run(self, query: str, max_leads: int = None, list_id: int = None, country: str = None) -> Dict:
         """
         Ejecutar búsqueda directa
         
         Args:
-            query: Query de búsqueda
+            query: Query de búsqueda (ej: "restaurante italiano")
             max_leads: Máximo de leads
             list_id: ID de lista destino
+            country: Código de país (ES, MX, CO, AR, etc.)
         """
         max_leads = max_leads or MAX_LEADS_PER_RUN
         if list_id:
             self.list_id = list_id
+        if country:
+            self.country = country
+            self.cities = COUNTRY_CITIES.get(country, COUNTRY_CITIES['ES'])
         
-        logger.info(f"🎯 Direct Bot - Query: {query}")
+        logger.info(f"🎯 Direct Bot - Query: {query}, País: {self.country}")
         
-        # 1. Buscar en Google
-        urls = self._search_google(query, num_results=max_leads * 3)
+        # 1. Buscar en Google con ciudades del país
+        all_urls = []
+        urls_per_city = max(5, (max_leads * 3) // len(self.cities[:3]))
+        
+        for city in self.cities[:3]:  # Top 3 ciudades del país
+            city_query = f"{query} {city}"
+            city_urls = self._search_google(city_query, num_results=urls_per_city)
+            all_urls.extend(city_urls)
+            logger.debug(f"  📍 {city}: {len(city_urls)} URLs")
+            time.sleep(random.uniform(0.5, 1.5))
+        
+        # También búsqueda general con país
+        general_query = f"{query} {self.country}"
+        general_urls = self._search_google(general_query, num_results=max_leads)
+        all_urls.extend(general_urls)
+        
+        # Deduplificar
+        urls = list(dict.fromkeys(all_urls))
         
         if not urls:
             logger.warning("No se encontraron URLs")
