@@ -91,10 +91,10 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
 # === FILTROS DE VALIDACIÓN ===
 # CMS Filter: 'all', 'wordpress', 'joomla'
-CMS_FILTER = os.getenv('CMS_FILTER', 'wordpress')
+CMS_FILTER = os.getenv('CMS_FILTER', 'all')  # Default: all (sin filtro)
 # Speed Score: para captar webs lentas (0-100)
 MIN_SPEED_SCORE = int(os.getenv('MIN_SPEED_SCORE', '0'))
-MAX_SPEED_SCORE = int(os.getenv('MAX_SPEED_SCORE', '80'))  # Captar webs con score < 80
+MAX_SPEED_SCORE = int(os.getenv('MAX_SPEED_SCORE', '100'))  # Default: 100 (sin filtro)
 # Solo perfiles ecológicos
 ECO_VERDE_ONLY = os.getenv('ECO_VERDE_ONLY', 'false').lower() == 'true'
 # Usar fallback de velocidad en vez de PageSpeed API (más rápido)
