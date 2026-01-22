@@ -144,20 +144,29 @@ class DirectBot(BaseBot):
         
         # 4. Procesar cada URL
         leads_processed = 0
+        urls_attempted = 0
         
-        for url in urls_to_process[:max_leads]:
+        for url in urls_to_process[:max_leads * 3]:  # Intentar más URLs para conseguir max_leads
             if leads_processed >= max_leads:
                 break
             
+            urls_attempted += 1
+            
             try:
+                logger.info(f"🔍 [{urls_attempted}] Analizando: {url[:60]}...")
                 lead = self._analyze_url(url)
                 
                 if lead:
                     result = self.save_lead(lead)
                     
-                    if result.get('success') and result.get('status') != 'duplicate':
-                        leads_processed += 1
-                        logger.info(f"✅ Lead #{leads_processed}: {lead.get('web')}")
+                    if result.get('success'):
+                        if result.get('status') != 'duplicate':
+                            leads_processed += 1
+                            logger.info(f"✅ Lead #{leads_processed}: {lead.get('web')}")
+                        else:
+                            logger.info(f"⏭️ Duplicado: {lead.get('web')}")
+                else:
+                    logger.debug(f"⊘ No válido: {url[:50]}")
                 
                 # Delay entre requests
                 time.sleep(random.uniform(SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX))
@@ -254,6 +263,7 @@ class DirectBot(BaseBot):
             response = self.session.get(url, timeout=HTTP_TIMEOUT, verify=False)
             
             if response.status_code != 200:
+                logger.debug(f"HTTP {response.status_code}: {url[:50]}")
                 return None
             
             html_content = response.text
@@ -269,11 +279,14 @@ class DirectBot(BaseBot):
             }
             
             # Validar y enriquecer con el validador completo
+            logger.debug(f"Validando {domain}...")
             enriched_lead = self.validator.validate_and_enrich(basic_lead, html_content)
             
             if not enriched_lead:
-                logger.debug(f"Lead no pasó validación: {domain}")
+                logger.info(f"  ⊘ No pasó validación: {domain}")
                 return None
+            
+            logger.info(f"  ✓ Validado: {domain}")
             
             # Enriquecer emails
             email_result = self.email_enricher.enrich_emails(url, enriched_lead.get('empresa', ''))
