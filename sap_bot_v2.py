@@ -23,11 +23,11 @@ import requests
 # ============================================================================
 
 SAP_CONFIG = {
-    'server': '213.97.178.117',
-    'port': 1435,
-    'database': 'DRASANVI',
-    'user': 'web2',
-    'password': 'eba-WWWhai'
+    'server': os.environ.get('SAP_SERVER', '213.97.178.117'),
+    'port': int(os.environ.get('SAP_PORT', 1435)),
+    'database': os.environ.get('SAP_DATABASE', 'DRASANVI'),
+    'user': os.environ.get('SAP_USER', ''),
+    'password': os.environ.get('SAP_PASSWORD', '')
 }
 
 # Dominios de email genéricos (no corporativos)
