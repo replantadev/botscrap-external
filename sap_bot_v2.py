@@ -535,9 +535,16 @@ class SAPBot:
 def main():
     parser = argparse.ArgumentParser(description='SAP Business One Bot v2 para StaffKit')
     
-    # Credenciales
+    # Credenciales StaffKit
     parser.add_argument('--staffkit-api-key', required=True, help='API Key de StaffKit')
     parser.add_argument('--list-id', type=int, required=True, help='ID de lista en StaffKit')
+    
+    # Credenciales SAP (desde StaffKit UI)
+    parser.add_argument('--sap-server', help='Servidor SAP')
+    parser.add_argument('--sap-port', type=int, help='Puerto SAP')
+    parser.add_argument('--sap-database', help='Base de datos SAP')
+    parser.add_argument('--sap-user', help='Usuario SAP')
+    parser.add_argument('--sap-password', help='Password SAP')
     
     # Filtros
     parser.add_argument('--branches', nargs='+', help='Branches a extraer (ej: FARMACIA DIET+HERBORIST)')
@@ -557,6 +564,23 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Simular sin enviar a StaffKit')
     
     args = parser.parse_args()
+    
+    # Configurar SAP desde argumentos o env vars
+    if args.sap_server:
+        SAP_CONFIG['server'] = args.sap_server
+    if args.sap_port:
+        SAP_CONFIG['port'] = args.sap_port
+    if args.sap_database:
+        SAP_CONFIG['database'] = args.sap_database
+    if args.sap_user:
+        SAP_CONFIG['user'] = args.sap_user
+    if args.sap_password:
+        SAP_CONFIG['password'] = args.sap_password
+    
+    # Validar credenciales SAP
+    if not SAP_CONFIG['user'] or not SAP_CONFIG['password']:
+        logger.error("Faltan credenciales SAP. Usa --sap-user y --sap-password o variables de entorno SAP_USER/SAP_PASSWORD")
+        sys.exit(1)
     
     # Resolver branches
     branches = args.branches
