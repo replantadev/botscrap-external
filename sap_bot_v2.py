@@ -293,7 +293,7 @@ class SAPBot:
                      limit: int = None, exclude_potentials: bool = True,
                      only_new: bool = False, since_date: str = None) -> list:
         """
-        Extrae contactos de SAP
+        Extrae contactos de SAP haciendo JOIN entre _WEB_Clientes y OCRD
         
         Args:
             branches: Lista de Branch a incluir (None = todos)
@@ -305,46 +305,40 @@ class SAPBot:
         """
         self.sap.connect()
         
-        # Obtener columnas disponibles
-        columns = self.get_columns()
-        
-        # Determinar columna de email
-        email_col = 'Email' if 'Email' in columns else 'E_mail' if 'E_mail' in columns else None
-        if not email_col:
-            logger.error("No se encontró columna de email en _WEB_Clientes")
-            return []
-        
-        # Determinar columnas disponibles para SELECT
-        select_cols = ['CardCode', 'CardName', email_col + ' as Email', 'Branch']
-        
-        optional_cols = ['Phone1', 'Phone2', 'Address', 'City', 'ZipCode', 'Country', 
-                        'CreateDate', 'UpdateDate', 'Website']
-        for col in optional_cols:
-            if col in columns:
-                select_cols.append(col)
-        
         # Construir WHERE clause
-        conditions = [f"{email_col} IS NOT NULL", f"{email_col} != ''"]
+        conditions = ["o.E_Mail IS NOT NULL", "o.E_Mail != ''"]
         
         if exclude_potentials:
-            conditions.append("Branch != 'CLTE POTENCIAL'")
+            conditions.append("w.Branch != 'CLTE POTENCIAL'")
         
         if branches:
             branch_list = "', '".join(branches)
-            conditions.append(f"Branch IN ('{branch_list}')")
+            conditions.append(f"w.Branch IN ('{branch_list}')")
         
         if since_date:
-            conditions.append(f"UpdateDate >= '{since_date}'")
+            conditions.append(f"o.UpdateDate >= '{since_date}'")
         
         where_clause = " AND ".join(conditions)
         
-        # Query principal
-        order_col = 'UpdateDate' if 'UpdateDate' in columns else 'CardCode'
+        # Query con JOIN entre _WEB_Clientes y OCRD
         sql = f"""
-            SELECT {', '.join(select_cols)}
-            FROM _WEB_Clientes
+            SELECT 
+                o.CardCode,
+                o.CardName,
+                o.E_Mail as Email,
+                w.Branch,
+                w.Telefono as Phone1,
+                o.Phone2,
+                w.Street as Address,
+                w.City,
+                w.ZipCode,
+                w.County as Country,
+                o.CreateDate,
+                o.UpdateDate
+            FROM _WEB_Clientes w
+            INNER JOIN OCRD o ON w.CardCode = o.CardCode
             WHERE {where_clause}
-            ORDER BY {order_col} DESC
+            ORDER BY o.UpdateDate DESC
         """
         
         if limit:
