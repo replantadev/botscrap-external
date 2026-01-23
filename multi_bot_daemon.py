@@ -291,7 +291,8 @@ class MultiBotDaemon:
             'direct': 'direct',
             'social': 'social',
             'resentment': 'resentment',
-            'autonomous': 'autonomous'
+            'autonomous': 'autonomous',
+            'sap': 'sap'
         }
         subcommand = subcommand_map.get(bot_type, 'direct')
         
@@ -348,6 +349,44 @@ class MultiBotDaemon:
                 cmd.extend(['--countries', countries])
             if config_file:
                 cmd.extend(['--config', config_file])
+        
+        elif subcommand == 'sap':
+            # Bot SAP Business One - usa sap_bot.py directamente
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'sap_bot.py',
+            ]
+            # Parámetros de conexión SAP
+            sap_server = bot.get('config_sap_server', '')
+            sap_port = bot.get('config_sap_port', 50000)
+            sap_database = bot.get('config_sap_database', '')
+            sap_user = bot.get('config_sap_user', '')
+            sap_password = bot.get('config_sap_password', '')
+            sap_card_type = bot.get('config_sap_card_type', '')
+            sap_group_codes = bot.get('config_sap_group_codes', '')
+            sap_active_only = bot.get('config_sap_active_only', 1)
+            sap_include_no_email = bot.get('config_sap_include_no_email', 0)
+            sap_custom_fields = bot.get('config_sap_custom_fields', '')
+            
+            if sap_server:
+                cmd.extend(['--server', sap_server])
+            if sap_port:
+                cmd.extend(['--port', str(sap_port)])
+            if sap_database:
+                cmd.extend(['--database', sap_database])
+            if sap_user:
+                cmd.extend(['--user', sap_user])
+            if sap_password:
+                cmd.extend(['--password', sap_password])
+            if sap_card_type:
+                cmd.extend(['--card-type', sap_card_type])
+            if sap_group_codes:
+                cmd.extend(['--group-codes', sap_group_codes])
+            cmd.extend(['--active-only', str(sap_active_only)])
+            cmd.extend(['--include-no-email', str(sap_include_no_email)])
+            if sap_custom_fields:
+                cmd.extend(['--custom-fields', sap_custom_fields])
+            cmd.extend(['--limit', str(leads_per_run)])
         
         if target_list_id:
             cmd.extend(['--list-id', str(target_list_id)])
