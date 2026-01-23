@@ -37,16 +37,89 @@ from utils.email_enricher import EmailEnricher
 
 logger = logging.getLogger(__name__)
 
-# Mapeo de países a ciudades
+# Mapeo de países a TODAS sus ciudades principales
 COUNTRY_CITIES = {
-    'ES': ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Málaga', 'Bilbao'],
-    'MX': ['Ciudad de México', 'Guadalajara', 'Monterrey', 'Puebla', 'Tijuana'],
-    'CO': ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Cartagena'],
-    'AR': ['Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza'],
-    'CL': ['Santiago', 'Valparaíso', 'Concepción'],
-    'PE': ['Lima', 'Arequipa', 'Trujillo', 'Cusco'],
-    'US': ['New York', 'Los Angeles', 'Miami', 'Houston', 'Chicago'],
-    'UK': ['London', 'Manchester', 'Birmingham', 'Leeds'],
+    'ES': [
+        'Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Málaga', 'Bilbao',
+        'Zaragoza', 'Alicante', 'Murcia', 'Palma de Mallorca', 'Las Palmas',
+        'Valladolid', 'Córdoba', 'Vigo', 'Gijón', 'Granada', 'A Coruña',
+        'Vitoria-Gasteiz', 'Santander', 'San Sebastián', 'Pamplona', 'Oviedo',
+        'Logroño', 'Toledo', 'Salamanca', 'Burgos', 'León', 'Cáceres', 'Badajoz'
+    ],
+    'MX': [
+        'Ciudad de México', 'Guadalajara', 'Monterrey', 'Puebla', 'Tijuana',
+        'León', 'Juárez', 'Torreón', 'Querétaro', 'San Luis Potosí',
+        'Mérida', 'Mexicali', 'Aguascalientes', 'Hermosillo', 'Saltillo',
+        'Morelia', 'Culiacán', 'Chihuahua', 'Cancún', 'Acapulco', 'Toluca',
+        'Veracruz', 'Oaxaca', 'Tampico', 'Durango', 'Mazatlán', 'Tuxtla Gutiérrez'
+    ],
+    'CO': [
+        'Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Cartagena',
+        'Bucaramanga', 'Pereira', 'Santa Marta', 'Cúcuta', 'Ibagué',
+        'Manizales', 'Villavicencio', 'Pasto', 'Neiva', 'Armenia',
+        'Montería', 'Valledupar', 'Popayán', 'Sincelejo', 'Tunja'
+    ],
+    'AR': [
+        'Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza', 'Tucumán',
+        'La Plata', 'Mar del Plata', 'Salta', 'Santa Fe', 'San Juan',
+        'Resistencia', 'Neuquén', 'Corrientes', 'Bahía Blanca', 'Posadas',
+        'Paraná', 'San Miguel de Tucumán', 'Formosa', 'San Luis', 'La Rioja'
+    ],
+    'CL': [
+        'Santiago', 'Valparaíso', 'Concepción', 'Viña del Mar', 'Antofagasta',
+        'La Serena', 'Temuco', 'Rancagua', 'Talca', 'Arica', 'Iquique',
+        'Puerto Montt', 'Chillán', 'Osorno', 'Coquimbo', 'Valdivia', 'Punta Arenas'
+    ],
+    'PE': [
+        'Lima', 'Arequipa', 'Trujillo', 'Cusco', 'Chiclayo', 'Piura',
+        'Iquitos', 'Huancayo', 'Tacna', 'Chimbote', 'Pucallpa', 'Ayacucho',
+        'Juliaca', 'Cajamarca', 'Sullana', 'Ica', 'Huánuco', 'Tarapoto'
+    ],
+    'EC': [
+        'Quito', 'Guayaquil', 'Cuenca', 'Santo Domingo', 'Ambato',
+        'Machala', 'Durán', 'Manta', 'Portoviejo', 'Loja', 'Riobamba',
+        'Esmeraldas', 'Ibarra', 'Quevedo', 'Milagro', 'Latacunga'
+    ],
+    'VE': [
+        'Caracas', 'Maracaibo', 'Valencia', 'Barquisimeto', 'Maracay',
+        'Ciudad Guayana', 'Barcelona', 'Maturín', 'Petare', 'Turmero',
+        'Cumaná', 'Barinas', 'Ciudad Bolívar', 'Mérida', 'San Cristóbal'
+    ],
+    'UY': [
+        'Montevideo', 'Salto', 'Paysandú', 'Las Piedras', 'Rivera',
+        'Maldonado', 'Tacuarembó', 'Melo', 'Mercedes', 'Artigas', 'Punta del Este'
+    ],
+    'BO': [
+        'Santa Cruz de la Sierra', 'La Paz', 'Cochabamba', 'Sucre', 'Oruro',
+        'Tarija', 'Potosí', 'Sacaba', 'Quillacollo', 'Montero', 'Trinidad'
+    ],
+    'PY': [
+        'Asunción', 'Ciudad del Este', 'San Lorenzo', 'Luque', 'Capiatá',
+        'Lambaré', 'Fernando de la Mora', 'Encarnación', 'Pedro Juan Caballero'
+    ],
+    'CR': [
+        'San José', 'Limón', 'Alajuela', 'Heredia', 'Puntarenas',
+        'Cartago', 'Liberia', 'Paraíso', 'Desamparados', 'San Carlos'
+    ],
+    'PA': [
+        'Ciudad de Panamá', 'San Miguelito', 'Colón', 'David', 'La Chorrera',
+        'Penonomé', 'Santiago', 'Chitré', 'Aguadulce'
+    ],
+    'GT': [
+        'Ciudad de Guatemala', 'Quetzaltenango', 'Escuintla', 'Villa Nueva',
+        'Mixco', 'Cobán', 'Petapa', 'San Juan Sacatepéquez', 'Chimaltenango'
+    ],
+    'US': [
+        'New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix',
+        'Philadelphia', 'San Antonio', 'San Diego', 'Dallas', 'Austin',
+        'San Jose', 'San Francisco', 'Seattle', 'Denver', 'Boston',
+        'Miami', 'Atlanta', 'Las Vegas', 'Portland', 'Orlando'
+    ],
+    'UK': [
+        'London', 'Birmingham', 'Manchester', 'Leeds', 'Glasgow',
+        'Liverpool', 'Newcastle', 'Sheffield', 'Bristol', 'Edinburgh',
+        'Cardiff', 'Belfast', 'Nottingham', 'Southampton', 'Leicester'
+    ],
 }
 
 
@@ -72,8 +145,11 @@ class DirectBot(BaseBot):
             'google_api_key': GOOGLE_API_KEY,
         }
         
-        # Configuración de país
-        self.country = config.get('country', 'ES')
+        # Configuración de país(es) - soporta múltiples
+        self.countries = config.get('countries', [config.get('country', 'ES')])
+        if isinstance(self.countries, str):
+            self.countries = [c.strip() for c in self.countries.split(',')]
+        self.country = self.countries[0] if self.countries else 'ES'
         self.cities = COUNTRY_CITIES.get(self.country, COUNTRY_CITIES['ES'])
         
         # Inicializar validador y enriquecedor
@@ -83,101 +159,110 @@ class DirectBot(BaseBot):
         # Lista específica para Direct Bot
         self.list_id = DIRECT_LIST_ID
     
-    def run(self, query: str, max_leads: int = None, list_id: int = None, country: str = None) -> Dict:
+    def _parse_keywords(self, query: str) -> List[str]:
+        """Parsear keywords separadas por coma o líneas nuevas"""
+        # Separar por coma y/o salto de línea
+        keywords = []
+        for line in query.replace('\r', '').split('\n'):
+            for kw in line.split(','):
+                kw = kw.strip()
+                if kw:
+                    keywords.append(kw)
+        return keywords if keywords else [query]
+    
+    def run(self, query: str, max_leads: int = None, list_id: int = None, 
+            country: str = None, countries: List[str] = None) -> Dict:
         """
-        Ejecutar búsqueda directa
+        Ejecutar búsqueda directa EXHAUSTIVA
+        
+        Procesa CADA keyword × CADA país × TODAS las ciudades
         
         Args:
-            query: Query de búsqueda (ej: "restaurante italiano")
-            max_leads: Máximo de leads
+            query: Keywords de búsqueda (separadas por coma o líneas)
+            max_leads: Máximo de leads totales
             list_id: ID de lista destino
-            country: Código de país (ES, MX, CO, AR, etc.)
+            country: Código de país principal (ES, MX, CO, AR, etc.)
+            countries: Lista de países a procesar
         """
         max_leads = max_leads or MAX_LEADS_PER_RUN
         if list_id:
             self.list_id = list_id
-        if country:
-            self.country = country
-            self.cities = COUNTRY_CITIES.get(country, COUNTRY_CITIES['ES'])
         
-        logger.info(f"🎯 Direct Bot - Query: {query}, País: {self.country}")
+        # Configurar países
+        if countries:
+            self.countries = countries if isinstance(countries, list) else [c.strip() for c in countries.split(',')]
+        elif country:
+            self.countries = [country]
         
-        # 1. Buscar en Google con ciudades del país
+        # Parsear keywords
+        keywords = self._parse_keywords(query)
+        
+        logger.info(f"🎯 Direct Bot - Búsqueda EXHAUSTIVA")
+        logger.info(f"   Keywords: {len(keywords)} - {', '.join(keywords[:5])}{'...' if len(keywords) > 5 else ''}")
+        logger.info(f"   Países: {len(self.countries)} - {', '.join(self.countries)}")
+        logger.info(f"   Límite total: {max_leads} leads")
+        
+        total_leads = 0
         all_urls = []
-        urls_per_city = max(5, (max_leads * 3) // len(self.cities[:3]))
         
-        for city in self.cities[:3]:  # Top 3 ciudades del país
-            city_query = f"{query} {city}"
-            city_urls = self._search_google(city_query, num_results=urls_per_city)
-            all_urls.extend(city_urls)
-            logger.debug(f"  📍 {city}: {len(city_urls)} URLs")
-            time.sleep(random.uniform(0.5, 1.5))
-        
-        # También búsqueda general con país
-        general_query = f"{query} {self.country}"
-        general_urls = self._search_google(general_query, num_results=max_leads)
-        all_urls.extend(general_urls)
-        
-        # Deduplificar
-        urls = list(dict.fromkeys(all_urls))
-        
-        if not urls:
-            logger.warning("No se encontraron URLs")
-            return self.get_stats()
-        
-        logger.info(f"📊 Encontradas {len(urls)} URLs")
-        
-        # 2. Filtrar dominios de redes sociales
-        urls = self._filter_urls(urls)
-        logger.info(f"📊 {len(urls)} URLs después de filtrar")
-        
-        # 3. Verificar duplicados en batch
-        domains = [self._extract_domain(u) for u in urls]
-        duplicates = self.check_duplicates_batch(domains)
-        
-        urls_to_process = [
-            url for url in urls 
-            if not duplicates.get(self._extract_domain(url), False)
-        ]
-        
-        logger.info(f"📊 {len(urls_to_process)} URLs nuevas para procesar")
-        
-        # 4. Procesar cada URL
-        leads_processed = 0
-        urls_attempted = 0
-        
-        for url in urls_to_process[:max_leads * 3]:  # Intentar más URLs para conseguir max_leads
-            if leads_processed >= max_leads:
+        # Iterar por cada keyword
+        for kw_idx, keyword in enumerate(keywords, 1):
+            if total_leads >= max_leads:
+                logger.info(f"🎯 Límite alcanzado ({max_leads}), deteniendo")
                 break
             
-            urls_attempted += 1
+            logger.info(f"\n📌 Keyword {kw_idx}/{len(keywords)}: '{keyword}'")
             
-            try:
-                logger.info(f"🔍 [{urls_attempted}] Analizando: {url[:60]}...")
-                lead = self._analyze_url(url)
+            # Iterar por cada país
+            for country_code in self.countries:
+                if total_leads >= max_leads:
+                    break
                 
-                if lead:
-                    result = self.save_lead(lead)
+                cities = COUNTRY_CITIES.get(country_code, COUNTRY_CITIES.get('ES', ['']))
+                logger.info(f"  🌍 País: {country_code} ({len(cities)} ciudades)")
+                
+                # Buscar en TODAS las ciudades del país
+                for city_idx, city in enumerate(cities, 1):
+                    if total_leads >= max_leads:
+                        break
                     
-                    if result.get('success'):
-                        if result.get('status') != 'duplicate':
-                            leads_processed += 1
-                            logger.info(f"✅ Lead #{leads_processed}: {lead.get('web')}")
-                        else:
-                            logger.info(f"⏭️ Duplicado: {lead.get('web')}")
-                else:
-                    logger.debug(f"⊘ No válido: {url[:50]}")
+                    # Query: keyword + ciudad
+                    search_query = f"{keyword} {city}" if city else keyword
+                    logger.debug(f"    📍 [{city_idx}/{len(cities)}] {city}")
+                    
+                    # Buscar con paginación completa
+                    city_urls = self._search_google_exhaustive(search_query, max_results=100)
+                    
+                    if city_urls:
+                        new_urls = [u for u in city_urls if u not in all_urls]
+                        all_urls.extend(new_urls)
+                        logger.debug(f"      → {len(new_urls)} URLs nuevas")
+                    
+                    # Pequeña pausa entre ciudades
+                    time.sleep(random.uniform(0.3, 0.8))
                 
-                # Delay entre requests
-                time.sleep(random.uniform(SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX))
+                # Búsqueda general con código de país
+                general_query = f"{keyword} {country_code}"
+                general_urls = self._search_google_exhaustive(general_query, max_results=50)
+                new_general = [u for u in general_urls if u not in all_urls]
+                all_urls.extend(new_general)
                 
-            except Exception as e:
-                logger.error(f"Error procesando {url}: {e}")
+            # Procesar URLs acumuladas para esta keyword
+            if all_urls:
+                leads_this_batch = self._process_urls(
+                    all_urls, 
+                    max_leads - total_leads,
+                    keyword
+                )
+                total_leads += leads_this_batch
+                all_urls = []  # Reset para siguiente keyword
+                logger.info(f"  ✅ Keyword '{keyword}': {leads_this_batch} leads guardados")
         
+        logger.info(f"\n🏁 Búsqueda EXHAUSTIVA completada: {total_leads} leads totales")
         return self.get_stats()
     
-    def _search_google(self, query: str, num_results: int = 30) -> List[str]:
-        """Buscar en Google Custom Search API"""
+    def _search_google_exhaustive(self, query: str, max_results: int = 100) -> List[str]:
+        """Buscar en Google agotando toda la paginación disponible"""
         
         if not GOOGLE_API_KEY or not CX_ID:
             logger.error("Google API Key o CX ID no configurados")
@@ -186,7 +271,8 @@ class DirectBot(BaseBot):
         urls = []
         start_index = 1
         
-        while len(urls) < num_results and start_index <= 91:
+        # Google Custom Search permite hasta 100 resultados (10 páginas de 10)
+        while len(urls) < max_results and start_index <= 91:
             try:
                 response = requests.get(
                     'https://www.googleapis.com/customsearch/v1',
@@ -204,25 +290,102 @@ class DirectBot(BaseBot):
                     data = response.json()
                     items = data.get('items', [])
                     
+                    if not items:
+                        break  # No más resultados
+                    
                     for item in items:
                         url = item.get('link')
-                        if url:
+                        if url and url not in urls:
                             urls.append(url)
                     
-                    if not items:
+                    # Si hay menos de 10 resultados, no hay más páginas
+                    if len(items) < 10:
                         break
+                        
+                elif response.status_code == 429:
+                    logger.warning("Rate limit de Google API, esperando...")
+                    time.sleep(5)
+                    continue
                 else:
                     logger.warning(f"Google API error: {response.status_code}")
                     break
                 
                 start_index += 10
-                time.sleep(0.5)
+                time.sleep(0.3)  # Pausa entre páginas
                 
             except Exception as e:
                 logger.error(f"Error en búsqueda: {e}")
                 break
         
         return urls
+    
+    def _process_urls(self, urls: List[str], max_leads: int, keyword: str = '') -> int:
+        """Procesar lista de URLs y guardar leads válidos"""
+        
+        # Filtrar dominios de redes sociales
+        urls = self._filter_urls(urls)
+        
+        # Deduplificar
+        urls = list(dict.fromkeys(urls))
+        
+        if not urls:
+            return 0
+        
+        logger.info(f"📊 {len(urls)} URLs únicas para procesar")
+        
+        # Verificar duplicados en batch con StaffKit
+        domains = [self._extract_domain(u) for u in urls]
+        duplicates = self.check_duplicates_batch(domains)
+        
+        urls_to_process = [
+            url for url in urls 
+            if not duplicates.get(self._extract_domain(url), False)
+        ]
+        
+        logger.info(f"📊 {len(urls_to_process)} URLs nuevas (no duplicadas)")
+        
+        # Procesar cada URL
+        leads_saved = 0
+        urls_attempted = 0
+        
+        for url in urls_to_process[:max_leads * 3]:  # Intentar más URLs para conseguir max_leads
+            if leads_saved >= max_leads:
+                break
+            
+            urls_attempted += 1
+            
+            try:
+                logger.info(f"🔍 [{urls_attempted}] Analizando: {url[:60]}...")
+                lead = self._analyze_url(url)
+                
+                if lead:
+                    # Añadir keyword si está disponible
+                    if keyword:
+                        lead['notas'] = f"Keyword: {keyword} | " + lead.get('notas', '')
+                    
+                    result = self.save_lead(lead)
+                    
+                    if result.get('success'):
+                        if result.get('status') != 'duplicate':
+                            leads_saved += 1
+                            logger.info(f"✅ Lead #{leads_saved}: {lead.get('web')}")
+                        else:
+                            logger.info(f"⏭️ Duplicado: {lead.get('web')}")
+                else:
+                    logger.debug(f"⊘ No válido: {url[:50]}")
+                
+                # Delay entre requests
+                time.sleep(random.uniform(SCRAPER_DELAY_MIN, SCRAPER_DELAY_MAX))
+                
+            except Exception as e:
+                logger.error(f"Error procesando {url}: {e}")
+        
+        return leads_saved
+    
+    # Método legacy para compatibilidad
+    def _search_google(self, query: str, num_results: int = 30) -> List[str]:
+        """Buscar en Google Custom Search API (alias de _search_google_exhaustive)"""
+        return self._search_google_exhaustive(query, max_results=num_results)
     
     def _filter_urls(self, urls: List[str]) -> List[str]:
         """Filtrar URLs de redes sociales y plataformas"""

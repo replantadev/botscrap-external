@@ -31,20 +31,28 @@ def cli():
 
 
 @cli.command()
-@click.option('--query', '-q', required=True, help='Query de búsqueda (ej: "agencia marketing wordpress madrid")')
+@click.option('--query', '-q', required=True, help='Keywords de búsqueda (separadas por coma)')
 @click.option('--limit', '-l', default=10, help='Número máximo de leads')
 @click.option('--list-id', type=int, help='ID de lista en StaffKit (override .env)')
-@click.option('--country', '-c', type=click.Choice(['ES', 'MX', 'CO', 'AR', 'CL', 'PE', 'US', 'UK']), default='ES', help='País de búsqueda')
-@click.option('--cms', type=click.Choice(['all', 'wordpress', 'joomla']), default=None, help='Filtrar por CMS')
+@click.option('--country', '-c', default='ES', help='País de búsqueda (deprecated, usar --countries)')
+@click.option('--countries', help='Países de búsqueda (separados por coma: ES,MX,CO)')
+@click.option('--cms', type=click.Choice(['all', 'wordpress', 'joomla', 'shopify', 'wix']), default=None, help='Filtrar por CMS')
 @click.option('--max-speed', type=int, default=None, help='Max speed score (captar webs lentas)')
 @click.option('--eco-only', is_flag=True, help='Solo perfiles ecológicos')
 @click.option('--dry-run', is_flag=True, help='No guardar, solo mostrar resultados')
-def direct(query: str, limit: int, list_id: int, country: str, cms: str, max_speed: int, eco_only: bool, dry_run: bool):
-    """🎯 Bot de búsqueda directa en Google"""
+def direct(query: str, limit: int, list_id: int, country: str, countries: str, cms: str, max_speed: int, eco_only: bool, dry_run: bool):
+    """🎯 Bot de búsqueda directa en Google (exhaustivo)"""
+    
+    # Determinar países a usar
+    country_list = countries.split(',') if countries else [country]
+    country_list = [c.strip().upper() for c in country_list if c.strip()]
+    
+    # Parsear keywords
+    keywords = [k.strip() for k in query.replace('\n', ',').split(',') if k.strip()]
     
     console.print(f"\n[bold blue]🎯 Direct Bot - BotScrap External[/bold blue]")
-    console.print(f"Query: [cyan]{query}[/cyan]")
-    console.print(f"País: [cyan]{country}[/cyan]")
+    console.print(f"Keywords: [cyan]{len(keywords)}[/cyan] - {', '.join(keywords[:3])}{'...' if len(keywords) > 3 else ''}")
+    console.print(f"Países: [cyan]{', '.join(country_list)}[/cyan]")
     console.print(f"Límite: [cyan]{limit}[/cyan] leads")
     
     # Mostrar filtros activos
@@ -68,7 +76,10 @@ def direct(query: str, limit: int, list_id: int, country: str, cms: str, max_spe
     from bots.direct_bot import DirectBot
     
     # Construir config de filtros
-    config = {'country': country}
+    config = {
+        'countries': country_list,
+        'country': country_list[0] if country_list else 'ES'
+    }
     if cms:
         config['cms_filter'] = cms
     if max_speed:
@@ -76,8 +87,8 @@ def direct(query: str, limit: int, list_id: int, country: str, cms: str, max_spe
     if eco_only:
         config['eco_verde_only'] = True
     
-    bot = DirectBot(dry_run=dry_run, config=config if config else None)
-    results = bot.run(query=query, max_leads=limit, list_id=list_id, country=country)
+    bot = DirectBot(dry_run=dry_run, config=config)
+    results = bot.run(query=query, max_leads=limit, list_id=list_id, countries=country_list)
     
     console.print(f"\n[green]✅ Completado:[/green]")
     console.print(f"   Encontrados: {results.get('leads_found', 0)}")
