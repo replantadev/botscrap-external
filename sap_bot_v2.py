@@ -170,9 +170,20 @@ class StaffKitAPI:
     def add_prospect(self, prospect: dict, list_id: int) -> dict:
         """Añade prospecto a lista"""
         try:
+            # La API espera los campos directamente, no dentro de 'prospects'
             payload = {
-                'list_id': list_id,
-                'prospects': [prospect]
+                'email': prospect.get('email', ''),
+                'contacto': f"{prospect.get('first_name', '')} {prospect.get('last_name', '')}".strip(),
+                'empresa': prospect.get('company', ''),
+                'telefono': prospect.get('phone', ''),
+                'ciudad': prospect.get('city', ''),
+                'pais': prospect.get('country', ''),
+                'web': prospect.get('website', ''),
+                'origen': prospect.get('source', 'SAP B1'),
+                'sap_cardcode': prospect.get('custom_fields', {}).get('sap_cardcode', ''),
+                'sap_branch': prospect.get('custom_fields', {}).get('sap_branch', ''),
+                'direccion': prospect.get('custom_fields', {}).get('sap_address', ''),
+                'cp': prospect.get('custom_fields', {}).get('sap_zipcode', '')
             }
             resp = self.session.post(
                 f"{self.base_url}/api/v2/prospects",
@@ -184,20 +195,17 @@ class StaffKitAPI:
             return {'error': str(e)}
     
     def add_prospects_batch(self, prospects: list, list_id: int) -> dict:
-        """Añade varios prospectos de una vez"""
-        try:
-            payload = {
-                'list_id': list_id,
-                'prospects': prospects
-            }
-            resp = self.session.post(
-                f"{self.base_url}/api/v2/prospects",
-                json=payload
-            )
-            return resp.json()
-        except Exception as e:
-            logger.error(f"Error add prospects batch: {e}")
-            return {'error': str(e)}
+        """Añade varios prospectos de uno en uno"""
+        added = 0
+        errors = 0
+        for prospect in prospects:
+            result = self.add_prospect(prospect, list_id)
+            if 'error' in result:
+                errors += 1
+                logger.warning(f"Error añadiendo {prospect.get('email', '?')}: {result['error']}")
+            else:
+                added += 1
+        return {'added': added, 'errors': errors}
 
 # ============================================================================
 # SAP BOT
