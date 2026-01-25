@@ -351,44 +351,16 @@ class MultiBotDaemon:
                 cmd.extend(['--config', config_file])
         
         elif subcommand == 'sap':
-            # Bot SAP Business One - usa sap_bot_v2.py con Branch
+            # Bot SAP Business One - usa sap_sync.py (ligero y eficiente)
             cmd = [
                 '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
-                'sap_bot_v2.py',
-                '--staffkit-api-key', self.api_key,
-                '--list-id', str(target_list_id),
+                'sap_sync.py',
+                '--bot-id', str(bot_id),
+                '--api-key', self.api_key
             ]
-            # Parámetros de conexión SAP
-            sap_server = bot.get('config_sap_server', '')
-            sap_port = bot.get('config_sap_port', 1435)
-            sap_database = bot.get('config_sap_database', '')
-            sap_user = bot.get('config_sap_user', '')
-            sap_password = bot.get('config_sap_password', '')
-            
-            # Nuevos parámetros v2
-            sap_branches = bot.get('config_sap_branches', '')  # Ej: "FARMACIA,DIET+HERBORIST"
-            sap_corporate_only = bot.get('config_sap_corporate_only', 0)
-            
-            if sap_server:
-                cmd.extend(['--sap-server', sap_server])
-            if sap_port:
-                cmd.extend(['--sap-port', str(sap_port)])
-            if sap_database:
-                cmd.extend(['--sap-database', sap_database])
-            if sap_user:
-                cmd.extend(['--sap-user', sap_user])
-            if sap_password:
-                cmd.extend(['--sap-password', sap_password])
-            if sap_branches:
-                # Convertir "FARMACIA,DIET+HERBORIST" a --branches FARMACIA DIET+HERBORIST
-                branches_list = [b.strip() for b in sap_branches.split(',') if b.strip()]
-                if branches_list:
-                    cmd.extend(['--branches'] + branches_list)
-            if sap_corporate_only:
-                cmd.append('--corporate-only')
-            cmd.extend(['--limit', str(leads_per_run)])
         
-        if target_list_id:
+        # Solo añadir list-id si no es SAP (SAP lo obtiene de su config)
+        if target_list_id and subcommand != 'sap':
             cmd.extend(['--list-id', str(target_list_id)])
         
         logger.info(f"🚀 [{bot_name}] Type: {bot_type}")
