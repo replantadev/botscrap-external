@@ -170,10 +170,8 @@ class StaffKitAPI:
     def add_prospect(self, prospect: dict, list_id: int) -> dict:
         """Añade prospecto a lista usando el endpoint correcto de bots"""
         try:
-            # Usar el endpoint correcto que guarda en list_members (MySQL)
-            payload = {
-                'action': 'save_lead',
-                'list_id': list_id,
+            # El endpoint espera lead_data como JSON string
+            lead_data = {
                 'email': prospect.get('email', ''),
                 'name': f"{prospect.get('first_name', '')} {prospect.get('last_name', '')}".strip(),
                 'company': prospect.get('company', ''),
@@ -183,6 +181,12 @@ class StaffKitAPI:
                 'website': prospect.get('website', ''),
                 'source': prospect.get('source', 'SAP B1'),
                 'notes': f"CardCode: {prospect.get('custom_fields', {}).get('sap_cardcode', '')} | Branch: {prospect.get('custom_fields', {}).get('sap_branch', '')}"
+            }
+            
+            payload = {
+                'action': 'save_lead',
+                'list_id': list_id,
+                'lead_data': json.dumps(lead_data)  # API expects JSON string
             }
             resp = self.session.post(
                 f"{self.base_url}/api/bots.php",
