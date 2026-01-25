@@ -168,25 +168,24 @@ class StaffKitAPI:
         return False
     
     def add_prospect(self, prospect: dict, list_id: int) -> dict:
-        """Añade prospecto a lista"""
+        """Añade prospecto a lista usando el endpoint correcto de bots"""
         try:
-            # La API espera los campos directamente, no dentro de 'prospects'
+            # Usar el endpoint correcto que guarda en list_members (MySQL)
             payload = {
+                'action': 'save_lead',
+                'list_id': list_id,
                 'email': prospect.get('email', ''),
-                'contacto': f"{prospect.get('first_name', '')} {prospect.get('last_name', '')}".strip(),
-                'empresa': prospect.get('company', ''),
-                'telefono': prospect.get('phone', ''),
-                'ciudad': prospect.get('city', ''),
-                'pais': prospect.get('country', ''),
-                'web': prospect.get('website', ''),
-                'origen': prospect.get('source', 'SAP B1'),
-                'sap_cardcode': prospect.get('custom_fields', {}).get('sap_cardcode', ''),
-                'sap_branch': prospect.get('custom_fields', {}).get('sap_branch', ''),
-                'direccion': prospect.get('custom_fields', {}).get('sap_address', ''),
-                'cp': prospect.get('custom_fields', {}).get('sap_zipcode', '')
+                'name': f"{prospect.get('first_name', '')} {prospect.get('last_name', '')}".strip(),
+                'company': prospect.get('company', ''),
+                'phone': prospect.get('phone', ''),
+                'city': prospect.get('city', ''),
+                'country': prospect.get('country', ''),
+                'website': prospect.get('website', ''),
+                'source': prospect.get('source', 'SAP B1'),
+                'notes': f"CardCode: {prospect.get('custom_fields', {}).get('sap_cardcode', '')} | Branch: {prospect.get('custom_fields', {}).get('sap_branch', '')}"
             }
             resp = self.session.post(
-                f"{self.base_url}/api/v2/prospects",
+                f"{self.base_url}/api/bots.php",
                 json=payload
             )
             return resp.json()
