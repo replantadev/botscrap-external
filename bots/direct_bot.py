@@ -134,6 +134,43 @@ class DirectBot(BaseBot):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
         
+        # === API Cost Tracking ===
+        self.api_calls = {
+            'custom_search': 0,
+            'maps': 0,
+            'places_details': 0,
+            'pagespeed': 0
+        }
+        self.api_pricing = {
+            'custom_search': 5.00,
+            'maps': 32.00,
+            'places_details': 17.00,
+            'pagespeed': 0.00
+        }
+    
+    def track_api_call(self, api_name: str, count: int = 1):
+        """Track an API call"""
+        if api_name in self.api_calls:
+            self.api_calls[api_name] += count
+    
+    def get_estimated_cost(self) -> float:
+        """Calculate estimated cost in USD"""
+        total = 0.0
+        for api_name, calls in self.api_calls.items():
+            price_per_1000 = self.api_pricing.get(api_name, 0)
+            total += (calls / 1000) * price_per_1000
+        return round(total, 4)
+    
+    def get_api_stats(self) -> dict:
+        """Get API usage statistics"""
+        return {
+            'api_calls_maps': self.api_calls.get('maps', 0),
+            'api_calls_places': self.api_calls.get('places_details', 0),
+            'api_calls_pagespeed': self.api_calls.get('pagespeed', 0),
+            'api_calls_custom_search': self.api_calls.get('custom_search', 0),
+            'estimated_cost_usd': self.get_estimated_cost()
+        }
+        
         # Configuración de filtros (override desde parámetros o usar defaults)
         config = config or {}
         self.validator_config = {
@@ -259,7 +296,16 @@ class DirectBot(BaseBot):
                 logger.info(f"  ✅ Keyword '{keyword}': {leads_this_batch} leads guardados")
         
         logger.info(f"\n🏁 Búsqueda EXHAUSTIVA completada: {total_leads} leads totales")
-        return self.get_stats()
+        
+        # Log API cost summary
+        cost = self.get_estimated_cost()
+        if cost > 0 or self.api_calls['custom_search'] > 0:
+            logger.info(f"💰 API Usage: CustomSearch={self.api_calls['custom_search']} calls, Cost=${cost:.4f}")
+        
+        # Merge API stats into result
+        stats = self.get_stats()
+        stats['api_stats'] = self.get_api_stats()
+        return stats
     
     def _search_google_exhaustive(self, query: str, max_results: int = 100) -> List[str]:
         """Buscar en Google agotando toda la paginación disponible"""
@@ -274,6 +320,7 @@ class DirectBot(BaseBot):
         # Google Custom Search permite hasta 100 resultados (10 páginas de 10)
         while len(urls) < max_results and start_index <= 91:
             try:
+                self.track_api_call('custom_search')  # Track API call
                 response = requests.get(
                     'https://www.googleapis.com/customsearch/v1',
                     params={

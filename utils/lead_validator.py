@@ -88,6 +88,46 @@ class LeadValidator:
         
         # API Keys
         self.google_api_key = self.config.get('google_api_key', '')
+        
+        # === API Cost Tracking ===
+        self.api_pricing = {
+            'maps': 32.00,           # Google Maps Text Search
+            'places_details': 17.00,  # Google Places Details
+            'pagespeed': 0.00,       # PageSpeed Insights (gratis)
+            'custom_search': 5.00,    # Custom Search
+            'hunter': 0.00           # Hunter.io
+        }
+        self.api_calls = {
+            'maps': 0,
+            'places_details': 0,
+            'pagespeed': 0,
+            'custom_search': 0,
+            'hunter': 0
+        }
+    
+    def track_api_call(self, api_name: str, count: int = 1):
+        """Track an API call for cost estimation"""
+        if api_name in self.api_calls:
+            self.api_calls[api_name] += count
+    
+    def get_estimated_cost(self) -> float:
+        """Calculate estimated cost in USD"""
+        total = 0.0
+        for api_name, calls in self.api_calls.items():
+            price_per_1000 = self.api_pricing.get(api_name, 0)
+            total += (calls / 1000) * price_per_1000
+        return round(total, 4)
+    
+    def get_api_stats(self) -> dict:
+        """Get API usage statistics"""
+        return {
+            'api_calls_maps': self.api_calls.get('maps', 0),
+            'api_calls_places': self.api_calls.get('places_details', 0),
+            'api_calls_pagespeed': self.api_calls.get('pagespeed', 0),
+            'api_calls_custom_search': self.api_calls.get('custom_search', 0),
+            'api_calls_hunter': self.api_calls.get('hunter', 0),
+            'estimated_cost_usd': self.get_estimated_cost()
+        }
     
     def _create_session(self) -> requests.Session:
         """Crear sesión HTTP con headers"""
@@ -266,6 +306,7 @@ class LeadValidator:
                 'strategy': 'mobile'
             }
             
+            self.track_api_call('pagespeed')  # Track API call
             response = self.session.get(url, params=params, timeout=25)
             response.raise_for_status()
             data = response.json()
