@@ -225,11 +225,13 @@ class MultiBotDaemon:
         if not (run_start <= current_hour <= run_end):
             return False, f"outside schedule ({run_start}-{run_end}h)"
         
-        # Verificar límite diario
-        leads_today = int(bot.get('leads_today', 0) or 0)
-        daily_limit = int(bot.get('config_daily_limit', 50) or 50)
-        if leads_today >= daily_limit:
-            return False, f"daily limit reached ({leads_today}/{daily_limit})"
+        # Verificar límite diario (NO aplica para bots SAP - son extractores)
+        bot_type = bot.get('bot_type', 'direct')
+        if bot_type != 'sap':
+            leads_today = int(bot.get('leads_today', 0) or 0)
+            daily_limit = int(bot.get('config_daily_limit', 50) or 50)
+            if leads_today >= daily_limit:
+                return False, f"daily limit reached ({leads_today}/{daily_limit})"
         
         # Verificar intervalo desde última ejecución
         last_run = bot.get('last_run_at')
