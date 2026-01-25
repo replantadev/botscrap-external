@@ -355,7 +355,7 @@ class MultiBotDaemon:
             cmd = [
                 '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
                 'sap_bot_v2.py',
-                '--staffkit-api-key', staffkit_api_key,
+                '--staffkit-api-key', self.api_key,
                 '--list-id', str(target_list_id),
             ]
             # Parámetros de conexión SAP
