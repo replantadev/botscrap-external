@@ -206,6 +206,10 @@ class MultiBotDaemon:
     
     def should_run_bot(self, bot):
         """Determina si un bot debe ejecutarse ahora"""
+        # Si tiene run_now=1, ejecutar inmediatamente (forzado desde UI)
+        if bot.get('run_now') and str(bot.get('run_now')) == '1':
+            return True, "forced (run_now)"
+        
         # Verificar si está habilitado
         if not bot.get('is_enabled') or bot.get('is_enabled') == '0':
             return False, "disabled"
