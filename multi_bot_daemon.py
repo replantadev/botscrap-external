@@ -210,6 +210,10 @@ class MultiBotDaemon:
         if not bot.get('is_enabled') or bot.get('is_enabled') == '0':
             return False, "disabled"
         
+        # Verificar si está pausado
+        if bot.get('is_paused') and bot.get('is_paused') != '0':
+            return False, "paused"
+        
         # Verificar día de la semana (bitmask: 1=Lun, 2=Mar, 4=Mie, 8=Jue, 16=Vie, 32=Sab, 64=Dom)
         run_days = int(bot.get('run_days', 127) or 127)
         current_weekday = datetime.now().weekday()  # 0=Lun, 6=Dom
@@ -275,15 +279,19 @@ class MultiBotDaemon:
         resentment_keywords = bot.get('config_resentment_keywords', '')
         
         # Calcular cuántos leads buscar en esta ejecución
-        remaining = max_leads - leads_today
-        leads_per_run = min(10, remaining)
-        
-        if leads_per_run <= 0:
-            # Notificar límite alcanzado
-            if bot.get('notify_on_limit'):
-                self.send_notification(bot_id, bot_name, 'limit_reached', 
-                    f'Bot ha alcanzado su límite diario de {max_leads} leads')
-            return {'success': True, 'leads_found': 0, 'leads_saved': 0, 'leads_duplicates': 0, 'at_limit': True}
+        # Bots SAP son extractores, no tienen límite
+        if bot_type == 'sap':
+            leads_per_run = 0  # SAP no usa este parámetro, sincroniza todo
+        else:
+            remaining = max_leads - leads_today
+            leads_per_run = min(10, remaining)
+            
+            if leads_per_run <= 0:
+                # Notificar límite alcanzado
+                if bot.get('notify_on_limit'):
+                    self.send_notification(bot_id, bot_name, 'limit_reached', 
+                        f'Bot ha alcanzado su límite diario de {max_leads} leads')
+                return {'success': True, 'leads_found': 0, 'leads_saved': 0, 'leads_duplicates': 0, 'at_limit': True}
         
         # Map bot_type to subcommand
         subcommand_map = {

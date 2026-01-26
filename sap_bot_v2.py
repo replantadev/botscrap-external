@@ -231,7 +231,11 @@ class SAPBot:
             'errors': 0
         }
         self.processed_hashes = set()
-        self.state_file = f"/var/www/vhosts/territoriodrasanvicr.com/b/sap_bot_state_{list_id}.json"
+        # Ruta de estado relativa al script para portabilidad
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        state_dir = os.path.join(script_dir, 'data')
+        os.makedirs(state_dir, exist_ok=True)
+        self.state_file = os.path.join(state_dir, f'sap_bot_state_{list_id}.json')
         
         # Signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
