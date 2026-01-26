@@ -283,9 +283,9 @@ class MultiBotDaemon:
         resentment_keywords = bot.get('config_resentment_keywords', '')
         
         # Calcular cuántos leads buscar en esta ejecución
-        # Bots SAP son extractores, no tienen límite
-        if bot_type == 'sap':
-            leads_per_run = 0  # SAP no usa este parámetro, sincroniza todo
+        # Bots SAP y Geographic son extractores/crawlers, no tienen límite tradicional
+        if bot_type in ('sap', 'geographic'):
+            leads_per_run = 0  # No usa este parámetro, tiene su propia lógica
         else:
             remaining = max_leads - leads_today
             leads_per_run = min(10, remaining)
@@ -306,7 +306,8 @@ class MultiBotDaemon:
             'social': 'social',
             'resentment': 'resentment',
             'autonomous': 'autonomous',
-            'sap': 'sap'
+            'sap': 'sap',
+            'geographic': 'geographic'
         }
         subcommand = subcommand_map.get(bot_type, 'direct')
         
@@ -373,8 +374,26 @@ class MultiBotDaemon:
                 '--api-key', self.api_key
             ]
         
-        # Solo añadir list-id si no es SAP (SAP lo obtiene de su config)
-        if target_list_id and subcommand != 'sap':
+        elif subcommand == 'geographic':
+            # Bot Geographic Crawler - barre países por sector
+            searches_per_run = int(bot.get('config_searches_per_run', 10) or 10)
+            dataforseo_login = bot.get('config_dataforseo_login', '')
+            dataforseo_password = bot.get('config_dataforseo_password', '')
+            delay_searches = bot.get('config_delay_between_searches', 2)
+            
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'geographic_bot.py',
+                '--bot-id', str(bot_id),
+                '--api-token', self.api_key,
+                '--searches-per-run', str(searches_per_run),
+                '--dataforseo-login', dataforseo_login,
+                '--dataforseo-password', dataforseo_password,
+                '--delay-searches', str(delay_searches)
+            ]
+        
+        # Solo añadir list-id si no es SAP ni Geographic (obtienen de su config)
+        if target_list_id and subcommand not in ('sap', 'geographic'):
             cmd.extend(['--list-id', str(target_list_id)])
         
         logger.info(f"🚀 [{bot_name}] Type: {bot_type}")
