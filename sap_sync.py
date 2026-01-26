@@ -159,12 +159,15 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
         
         # Query con JOIN entre OCRD y _WEB_Clientes (donde está Branch)
         # Website: solo IntrntSite (U_DRA_Web es flag Y/N, NTSWebSite es smallint)
+        # CardFName = nombre comercial (ej: "FARMACIA X"), CardName = propietario
         query = f"""
             SELECT TOP {limit}
                 o.CardCode,
-                o.CardName,
+                o.CardFName AS CompanyName,
+                o.CardName AS ContactName,
                 o.E_Mail AS Email,
                 o.Phone1 AS Phone,
+                o.Cellular AS Mobile,
                 w.City,
                 w.County AS Country,
                 w.Branch,
@@ -207,11 +210,27 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
                 domain = email.split('@')[1]
                 website = f"https://{domain}"
             
+            # Usar nombre comercial (CardFName) o fallback a propietario (CardName)
+            company_name = (row.get('CompanyName') or '').strip()
+            contact_name = (row.get('ContactName') or '').strip()
+            
+            # Si no hay nombre comercial, usar el del propietario
+            if not company_name:
+                company_name = contact_name
+                contact_name = ''
+            
+            # Teléfono: preferir fijo, si no hay usar móvil
+            phone = (row.get('Phone') or '').strip()
+            mobile = (row.get('Mobile') or '').strip()
+            if not phone and mobile:
+                phone = mobile
+            
             contacts.append({
                 'cardcode': row.get('CardCode', ''),
-                'company': row.get('CardName', ''),
+                'company': company_name,
+                'name': contact_name,
                 'email': email,
-                'phone': row.get('Phone', ''),
+                'phone': phone,
                 'city': row.get('City', ''),
                 'country': row.get('Country', 'ES'),
                 'branch': row.get('Branch', ''),
