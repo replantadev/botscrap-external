@@ -332,6 +332,7 @@ class SAPBot:
         where_clause = " AND ".join(conditions)
         
         # Query con JOIN entre _WEB_Clientes y OCRD
+        # IntrntSite es el campo de website en SAP Business One
         sql = f"""
             SELECT 
                 o.CardCode,
@@ -344,6 +345,7 @@ class SAPBot:
                 w.City,
                 w.ZipCode,
                 w.County as Country,
+                o.IntrntSite as Website,
                 o.CreateDate,
                 o.UpdateDate
             FROM _WEB_Clientes w
@@ -402,6 +404,13 @@ class SAPBot:
                 continue
             
             # Preparar prospecto
+            # Website: primero de SAP, si no hay, derivar del dominio del email corporativo
+            website = contact.get('Website', '').strip()
+            if not website and email and self._is_corporate_email(email):
+                # Derivar website del dominio del email
+                domain = email.split('@')[-1]
+                website = f"https://www.{domain}"
+            
             prospect = {
                 'email': email,
                 'first_name': self._extract_first_name(contact.get('CardName', '')),
@@ -410,7 +419,7 @@ class SAPBot:
                 'phone': contact.get('Phone1') or contact.get('Phone2') or '',
                 'city': contact.get('City', ''),
                 'country': contact.get('Country', ''),
-                'website': contact.get('Website', ''),
+                'website': website,
                 'source': 'SAP B1',
                 'custom_fields': {
                     'sap_cardcode': contact.get('CardCode', ''),
