@@ -154,17 +154,18 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
         
         # Query con JOIN entre OCRD y _WEB_Clientes (donde está Branch)
         # Website: usa COALESCE con fallback U_DRA_Web -> IntrntSite -> NTSWebSite
+        # Nota: Usamos campos de _WEB_Clientes principalmente, evitando mezclar tipos
         query = f"""
             SELECT TOP {limit}
                 o.CardCode,
                 o.CardName,
                 o.E_Mail AS Email,
                 o.Phone1 AS Phone,
-                COALESCE(w.City, o.City) AS City,
-                COALESCE(w.County, o.Country) AS Country,
+                COALESCE(w.City, CAST(o.City AS VARCHAR(100))) AS City,
+                w.County AS Country,
                 w.Branch,
-                COALESCE(w.Street, o.Address) AS Address,
-                COALESCE(w.ZipCode, o.ZipCode) AS ZipCode,
+                w.Street AS Address,
+                w.ZipCode,
                 COALESCE(NULLIF(o.U_DRA_Web, ''), NULLIF(o.IntrntSite, ''), o.NTSWebSite) AS Website
             FROM OCRD o
             INNER JOIN _WEB_Clientes w ON o.CardCode = w.CardCode
