@@ -256,39 +256,43 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
 # STAFFKIT API
 # ============================================================================
 
-def send_to_staffkit(api_key: str, list_id: int, contacts: list) -> dict:
+def sync_to_staffkit(api_key: str, list_id: int, contacts: list) -> dict:
     """
-    Envía contactos a StaffKit en batch.
+    Sincroniza contactos a StaffKit de forma inteligente.
+    - Nuevos: los crea
+    - Existentes: solo actualiza campos SAP si cambiaron
+    - Nunca toca campos enriquecidos (ai_*, email_confianza, etc.)
     
     Returns:
-        {'added': N, 'duplicates': N, 'errors': N}
+        {'created': N, 'updated': N, 'unchanged': N, 'errors': N}
     """
     if not contacts:
-        return {'added': 0, 'duplicates': 0, 'errors': 0}
+        return {'created': 0, 'updated': 0, 'unchanged': 0, 'errors': 0}
     
     headers = {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'
     }
     
-    stats = {'added': 0, 'duplicates': 0, 'errors': 0}
+    stats = {'created': 0, 'updated': 0, 'unchanged': 0, 'errors': 0}
     
-    logger.info(f"Enviando {len(contacts)} contactos a StaffKit (lista {list_id})...")
+    logger.info(f"Sincronizando {len(contacts)} contactos a StaffKit (lista {list_id})...")
     
     for contact in contacts:
         lead_data = {
+            'cardcode': contact['cardcode'],
             'email': contact['email'],
             'company': contact['company'],
+            'name': contact.get('name', ''),
             'phone': contact['phone'],
             'city': contact['city'],
             'country': contact['country'],
             'website': contact.get('website', ''),
-            'source': 'SAP B1',
-            'notes': f"CardCode: {contact['cardcode']} | Branch: {contact['branch']}"
+            'branch': contact['branch']
         }
         
         payload = {
-            'action': 'save_lead',
+            'action': 'sync_sap_lead',
             'list_id': list_id,
             'lead_data': json.dumps(lead_data)
         }
@@ -303,20 +307,37 @@ def send_to_staffkit(api_key: str, list_id: int, contacts: list) -> dict:
             result = resp.json()
             
             if result.get('success'):
-                if result.get('status') == 'duplicate':
-                    stats['duplicates'] += 1
-                else:
-                    stats['added'] += 1
+                status = result.get('status', 'unknown')
+                if status == 'created':
+                    stats['created'] += 1
+                elif status == 'updated':
+                    stats['updated'] += 1
+                    changes = result.get('changes', {})
+                    if changes:
+                        logger.info(f"  Actualizado {contact['cardcode']}: {list(changes.keys())}")
+                elif status == 'unchanged':
+                    stats['unchanged'] += 1
             else:
                 stats['errors'] += 1
-                logger.warning(f"Error: {contact['email']} - {result.get('error', 'Unknown')}")
+                logger.warning(f"Error: {contact['cardcode']} - {result.get('error', 'Unknown')}")
                 
         except Exception as e:
             stats['errors'] += 1
-            logger.error(f"Error enviando {contact['email']}: {e}")
+            logger.error(f"Error sincronizando {contact['cardcode']}: {e}")
     
-    logger.info(f"Completado: {stats['added']} añadidos, {stats['duplicates']} duplicados, {stats['errors']} errores")
+    logger.info(f"Completado: {stats['created']} nuevos, {stats['updated']} actualizados, {stats['unchanged']} sin cambios, {stats['errors']} errores")
     return stats
+
+
+# Mantener función legacy para compatibilidad
+def send_to_staffkit(api_key: str, list_id: int, contacts: list) -> dict:
+    """Legacy: usa sync_to_staffkit internamente"""
+    result = sync_to_staffkit(api_key, list_id, contacts)
+    return {
+        'added': result['created'],
+        'duplicates': result['unchanged'] + result['updated'],
+        'errors': result['errors']
+    }
 
 
 def get_bot_config(api_key: str, bot_id: int) -> dict:
@@ -372,7 +393,6 @@ def main():
     parser.add_argument('--limit', type=int, default=5000)
     
     # Opciones
-    parser.add_argument('--full-sync', action='store_true', help='Ignorar último CardCode, sincronizar todo')
     parser.add_argument('--dry-run', action='store_true', help='No enviar a StaffKit, solo mostrar')
     
     args = parser.parse_args()
@@ -401,52 +421,50 @@ def main():
             'include_with_web': getattr(args, 'include_with_web', False),
             'limit': args.limit
         }
-        bot_id = 0  # Sin estado persistente
+        bot_id = 0
         api_key = args.api_key
         list_id = args.list_id
     else:
         parser.print_help()
         sys.exit(1)
     
-    # Cargar estado
-    state = load_state(bot_id) if bot_id else {}
-    last_cardcode = '' if args.full_sync else state.get('last_cardcode', '')
-    
     logger.info("=" * 60)
-    logger.info("SAP → StaffKit Sync")
+    logger.info("SAP → StaffKit Sync (Modo Inteligente)")
     logger.info("=" * 60)
     logger.info(f"Branches: {config.get('branches') or 'Todos'}")
     logger.info(f"Lista destino: {list_id}")
-    logger.info(f"Último CardCode: {last_cardcode or '(desde inicio)'}")
+    logger.info("Modo: Sync inteligente (solo nuevos o cambios)")
     logger.info("=" * 60)
     
-    # Extraer de SAP
-    contacts = extract_from_sap(config, last_cardcode)
+    # Extraer TODOS de SAP (sin filtro incremental, el sync es inteligente)
+    contacts = extract_from_sap(config, last_cardcode='')
     
     if not contacts:
-        logger.info("No hay contactos nuevos para sincronizar")
+        logger.info("No hay contactos para sincronizar")
         return
     
-    # Enviar a StaffKit
+    logger.info(f"Obtenidos {len(contacts)} contactos de SAP")
+    
+    # Sincronizar a StaffKit
     if args.dry_run:
-        logger.info(f"[DRY RUN] Se enviarían {len(contacts)} contactos:")
+        logger.info(f"[DRY RUN] Se sincronizarían {len(contacts)} contactos:")
         for c in contacts[:10]:
-            logger.info(f"  - {c['email']} ({c['company']})")
+            logger.info(f"  - {c['cardcode']}: {c['email']} ({c['company']})")
         if len(contacts) > 10:
             logger.info(f"  ... y {len(contacts) - 10} más")
     else:
-        stats = send_to_staffkit(api_key, list_id, contacts)
+        stats = sync_to_staffkit(api_key, list_id, contacts)
         
-        # Actualizar estado
-        if contacts and bot_id:
-            state['last_cardcode'] = contacts[-1]['cardcode']
-            state['total_synced'] = state.get('total_synced', 0) + stats['added']
-            save_state(bot_id, state)
-            logger.info(f"Estado guardado: último CardCode = {state['last_cardcode']}")
+        # Log resumen
+        logger.info("=" * 60)
+        logger.info("RESUMEN SINCRONIZACIÓN")
+        logger.info(f"  - Nuevos añadidos: {stats['created']}")
+        logger.info(f"  - Actualizados: {stats['updated']}")
+        logger.info(f"  - Sin cambios: {stats['unchanged']}")
+        logger.info(f"  - Errores: {stats['errors']}")
+        logger.info("=" * 60)
     
-    logger.info("=" * 60)
     logger.info("Sincronización completada")
-    logger.info("=" * 60)
 
 
 if __name__ == '__main__':
