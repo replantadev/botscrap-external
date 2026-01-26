@@ -278,6 +278,48 @@ class SAPBot:
         domain = email_lower.split('@')[-1] if '@' in email_lower else ''
         return domain not in GENERIC_EMAIL_DOMAINS
     
+    def _is_valid_url(self, value: str) -> bool:
+        """Verifica si un valor parece ser una URL válida (no un email)"""
+        if not value:
+            return False
+        value = value.strip().lower()
+        # Si contiene @ es email, no URL
+        if '@' in value:
+            return False
+        # Debe parecer un dominio o URL
+        if value.startswith('http://') or value.startswith('https://'):
+            return True
+        # Verificar si parece dominio (tiene . y no espacios)
+        if '.' in value and ' ' not in value and len(value) > 4:
+            return True
+        return False
+    
+    def _extract_website(self, contact: dict, email: str) -> str:
+        """
+        Extrae website del contacto SAP con fallback inteligente:
+        1. Buscar en campos SAP: U_DRA_Web, NTSWebSite, IntrntSite
+        2. Validar que sea URL (no email mal puesto)
+        3. Fallback: derivar del dominio del email corporativo
+        """
+        # Orden de prioridad para campos de website
+        website_fields = ['U_DRA_Web', 'NTSWebSite', 'IntrntSite']
+        
+        for field in website_fields:
+            value = contact.get(field, '')
+            if value and self._is_valid_url(value):
+                # Normalizar URL
+                value = value.strip()
+                if not value.startswith('http'):
+                    value = f"https://{value}"
+                return value
+        
+        # Fallback: derivar del dominio del email corporativo
+        if email and self._is_corporate_email(email):
+            domain = email.split('@')[-1]
+            return f"https://www.{domain}"
+        
+        return ''
+    
     def get_columns(self) -> list:
         """Obtiene columnas de _WEB_Clientes"""
         self.sap.connect()
@@ -332,7 +374,7 @@ class SAPBot:
         where_clause = " AND ".join(conditions)
         
         # Query con JOIN entre _WEB_Clientes y OCRD
-        # IntrntSite es el campo de website en SAP Business One
+        # Campos de website: IntrntSite (estándar), NTSWebSite, U_DRA_Web (personalizado)
         sql = f"""
             SELECT 
                 o.CardCode,
@@ -345,7 +387,9 @@ class SAPBot:
                 w.City,
                 w.ZipCode,
                 w.County as Country,
-                o.IntrntSite as Website,
+                o.IntrntSite,
+                o.NTSWebSite,
+                o.U_DRA_Web,
                 o.CreateDate,
                 o.UpdateDate
             FROM _WEB_Clientes w
@@ -404,12 +448,8 @@ class SAPBot:
                 continue
             
             # Preparar prospecto
-            # Website: primero de SAP, si no hay, derivar del dominio del email corporativo
-            website = contact.get('Website', '').strip()
-            if not website and email and self._is_corporate_email(email):
-                # Derivar website del dominio del email
-                domain = email.split('@')[-1]
-                website = f"https://www.{domain}"
+            # Website: buscar en los 3 campos de SAP, validar que sea URL, fallback a dominio email
+            website = self._extract_website(contact, email)
             
             prospect = {
                 'email': email,
