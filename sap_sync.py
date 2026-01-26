@@ -153,18 +153,19 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
         where_sql = " AND ".join(where_clauses)
         
         # Query con JOIN entre OCRD y _WEB_Clientes (donde está Branch)
+        # Website: usa COALESCE con fallback U_DRA_Web -> IntrntSite -> NTSWebSite
         query = f"""
             SELECT TOP {limit}
                 o.CardCode,
                 o.CardName,
                 o.E_Mail AS Email,
-                w.Telefono AS Phone,
-                w.City,
-                w.County AS Country,
+                o.Phone1 AS Phone,
+                COALESCE(w.City, o.City) AS City,
+                COALESCE(w.County, o.Country) AS Country,
                 w.Branch,
-                w.Street AS Address,
-                w.ZipCode,
-                o.IntrntSite AS Website
+                COALESCE(w.Street, o.Address) AS Address,
+                COALESCE(w.ZipCode, o.ZipCode) AS ZipCode,
+                COALESCE(NULLIF(o.U_DRA_Web, ''), NULLIF(o.IntrntSite, ''), o.NTSWebSite) AS Website
             FROM OCRD o
             INNER JOIN _WEB_Clientes w ON o.CardCode = w.CardCode
             WHERE {where_sql}
@@ -197,7 +198,8 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
                 'country': row.get('Country', 'ES'),
                 'branch': row.get('Branch', ''),
                 'address': row.get('Address', ''),
-                'zipcode': row.get('ZipCode', '')
+                'zipcode': row.get('ZipCode', ''),
+                'website': row.get('Website', '')
             })
         
         logger.info(f"Filtrados a {len(contacts)} emails corporativos")
@@ -243,6 +245,7 @@ def send_to_staffkit(api_key: str, list_id: int, contacts: list) -> dict:
             'phone': contact['phone'],
             'city': contact['city'],
             'country': contact['country'],
+            'website': contact.get('website', ''),
             'source': 'SAP B1',
             'notes': f"CardCode: {contact['cardcode']} | Branch: {contact['branch']}"
         }
