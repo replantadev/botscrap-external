@@ -138,34 +138,37 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
         cursor = conn.cursor(as_dict=True)
         logger.info("Conectado a SAP")
         
-        # Construir query
-        where_clauses = ["T0.CardType = 'C'"]  # Solo clientes
+        # Construir query - Usa JOIN con _WEB_Clientes que tiene el Branch
+        where_clauses = ["o.E_Mail IS NOT NULL", "o.E_Mail != ''"]
         
-        # Filtrar por Branch si se especifica
+        # Filtrar por Branch si se especifica (Branch está en _WEB_Clientes)
         if branches:
             branch_list = "', '".join(branches)
-            where_clauses.append(f"T0.U_RAMA IN ('{branch_list}')")
+            where_clauses.append(f"w.Branch IN ('{branch_list}')")
         
         # Solo registros nuevos (CardCode > último procesado)
         if last_cardcode:
-            where_clauses.append(f"T0.CardCode > '{last_cardcode}'")
+            where_clauses.append(f"o.CardCode > '{last_cardcode}'")
         
         where_sql = " AND ".join(where_clauses)
         
+        # Query con JOIN entre OCRD y _WEB_Clientes (donde está Branch)
         query = f"""
             SELECT TOP {limit}
-                T0.CardCode,
-                T0.CardName,
-                T0.E_Mail AS Email,
-                T0.Phone1 AS Phone,
-                T0.City,
-                T0.Country,
-                T0.U_RAMA AS Branch,
-                T0.Address,
-                T0.ZipCode
-            FROM OCRD T0
+                o.CardCode,
+                o.CardName,
+                o.E_Mail AS Email,
+                w.Telefono AS Phone,
+                w.City,
+                w.County AS Country,
+                w.Branch,
+                w.Street AS Address,
+                w.ZipCode,
+                o.IntrntSite AS Website
+            FROM OCRD o
+            INNER JOIN _WEB_Clientes w ON o.CardCode = w.CardCode
             WHERE {where_sql}
-            ORDER BY T0.CardCode ASC
+            ORDER BY o.CardCode ASC
         """
         
         logger.info(f"Ejecutando query (branches={branches}, desde={last_cardcode or 'inicio'})...")
