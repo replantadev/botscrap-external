@@ -376,10 +376,10 @@ class MultiBotDaemon:
         
         elif subcommand == 'geographic':
             # Bot Geographic Crawler - barre países por sector
-            searches_per_run = int(bot.get('config_searches_per_run', 10) or 10)
+            searches_per_run = int(bot.get('config_geo_searches_per_run', 10) or 10)
             dataforseo_login = bot.get('config_dataforseo_login', '')
             dataforseo_password = bot.get('config_dataforseo_password', '')
-            delay_searches = bot.get('config_delay_between_searches', 2)
+            delay_searches = bot.get('config_geo_delay_searches', 2)
             
             cmd = [
                 '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
