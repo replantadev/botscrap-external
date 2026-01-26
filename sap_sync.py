@@ -189,6 +189,13 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
             if not email:
                 continue
             
+            # Website con fallback al dominio del email corporativo
+            website = (row.get('Website') or '').strip()
+            if not website and email and '@' in email:
+                domain = email.split('@')[1]
+                # Solo usar dominio si es corporativo (ya filtrado arriba)
+                website = f"https://{domain}"
+            
             contacts.append({
                 'cardcode': row.get('CardCode', ''),
                 'company': row.get('CardName', ''),
@@ -199,7 +206,7 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
                 'branch': row.get('Branch', ''),
                 'address': row.get('Address', ''),
                 'zipcode': row.get('ZipCode', ''),
-                'website': row.get('Website', '')
+                'website': website
             })
         
         logger.info(f"Filtrados a {len(contacts)} emails corporativos")
