@@ -121,6 +121,7 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
     password = config['password']
     branches = config.get('branches', [])
     corporate_only = config.get('corporate_only', True)
+    include_with_web = config.get('include_with_web', False)
     limit = config.get('limit', 5000)
     
     logger.info(f"Conectando a SAP ({server}:{port})...")
@@ -181,19 +182,25 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
         contacts = []
         for row in rows:
             email = clean_email(row.get('Email', ''))
+            website_from_sap = (row.get('Website') or '').strip()
+            is_corporate = is_corporate_email(email)
             
-            # Filtrar emails corporativos si se requiere
-            if corporate_only and not is_corporate_email(email):
-                continue
+            # Lógica de filtrado:
+            # - Si corporate_only: solo emails corporativos
+            # - PERO si include_with_web y tiene web en SAP: incluir aunque email sea personal
+            if corporate_only:
+                if not is_corporate:
+                    # Email personal, pero ¿tiene web?
+                    if not (include_with_web and website_from_sap):
+                        continue
             
             if not email:
                 continue
             
-            # Website con fallback al dominio del email corporativo
-            website = (row.get('Website') or '').strip()
-            if not website and email and '@' in email:
+            # Website con fallback al dominio del email (solo si es corporativo)
+            website = website_from_sap
+            if not website and email and '@' in email and is_corporate:
                 domain = email.split('@')[1]
-                # Solo usar dominio si es corporativo (ya filtrado arriba)
                 website = f"https://{domain}"
             
             contacts.append({
@@ -310,6 +317,7 @@ def get_bot_config(api_key: str, bot_id: int) -> dict:
                 'password': bot.get('config_sap_password', ''),
                 'branches': [b.strip() for b in (bot.get('config_sap_branches', '') or '').split(',') if b.strip()],
                 'corporate_only': bool(bot.get('config_sap_corporate_only', 1)),
+                'include_with_web': bool(bot.get('config_sap_include_with_web', 0)),
                 'limit': int(bot.get('config_sap_limit', 5000) or 5000),
                 'list_id': int(bot.get('target_list_id', 0))
             }
@@ -367,6 +375,7 @@ def main():
             'password': args.sap_password,
             'branches': args.branches or [],
             'corporate_only': args.corporate_only,
+            'include_with_web': getattr(args, 'include_with_web', False),
             'limit': args.limit
         }
         bot_id = 0  # Sin estado persistente
