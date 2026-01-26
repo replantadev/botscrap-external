@@ -124,6 +124,10 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
     include_with_web = config.get('include_with_web', False)
     limit = config.get('limit', 5000)
     
+    # limit=0 significa sin límite (traer todos)
+    if limit == 0:
+        limit = 999999
+    
     logger.info(f"Conectando a SAP ({server}:{port})...")
     
     try:
