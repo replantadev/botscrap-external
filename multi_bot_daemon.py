@@ -100,13 +100,24 @@ def check_existing_daemon():
 lock_file_handle = None
 
 # Configuración de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
+# Si stdout NO es un terminal (ej: redirigido por nohup), solo usar FileHandler
+# Si stdout ES un terminal, usar ambos handlers
+if sys.stdout.isatty():
+    # Modo interactivo: log a consola Y archivo
+    log_handlers = [
         logging.StreamHandler(),
         logging.FileHandler(LOG_FILE)
     ]
+else:
+    # Modo nohup/background: solo archivo (evita duplicación)
+    log_handlers = [
+        logging.FileHandler(LOG_FILE)
+    ]
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=log_handlers
 )
 logger = logging.getLogger(__name__)
 
