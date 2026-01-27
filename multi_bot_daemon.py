@@ -376,20 +376,15 @@ class MultiBotDaemon:
         
         elif subcommand == 'geographic':
             # Bot Geographic Crawler - barre países por sector
+            # Las credenciales de DataForSEO se obtienen desde la BD via API
             searches_per_run = int(bot.get('config_geo_searches_per_run', 10) or 10)
-            dataforseo_login = bot.get('config_dataforseo_login', '')
-            dataforseo_password = bot.get('config_dataforseo_password', '')
-            delay_searches = bot.get('config_geo_delay_searches', 2)
             
             cmd = [
                 '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
                 'geographic_bot.py',
                 '--bot-id', str(bot_id),
                 '--api-key', self.api_key,
-                '--searches-per-run', str(searches_per_run),
-                '--dataforseo-login', dataforseo_login,
-                '--dataforseo-password', dataforseo_password,
-                '--delay-searches', str(delay_searches)
+                '--searches-per-run', str(searches_per_run)
             ]
         
         # Solo añadir list-id si no es SAP ni Geographic (obtienen de su config)
