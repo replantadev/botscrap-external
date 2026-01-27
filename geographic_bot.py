@@ -352,9 +352,9 @@ class GeographicBot:
         keyword = search['keyword']
         location = search['location']
         country = search['country']
-        current_page = search['current_page']
-        max_pages = search['max_pages']
-        results_per_page = search.get('results_per_page', 20)
+        current_page = int(search['current_page'])
+        max_pages = int(search['max_pages'])
+        results_per_page = int(search.get('results_per_page', 20))
         api_source = search.get('api_source', 'dataforseo')
         
         logger.info(f"Procesando: '{keyword}' en {location} (página {current_page + 1}/{max_pages})")
