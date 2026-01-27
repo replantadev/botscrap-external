@@ -163,13 +163,13 @@ class SAPServiceLayerClient:
         
         filter_str = " and ".join(filters)
         
-        # Campos a seleccionar
+        # Campos a seleccionar (nombres según Service Layer de SAP B1)
         select_fields = [
             "CardCode", "CardName", "CardForeignName",
             "EmailAddress", "Phone1", "Phone2", "Cellular",
             "Website", "GroupCode",
-            "BillToCity", "BillToCountry", "BillToStreet", "BillToZipCode",
-            "ContactPerson", "Notes"
+            "City", "Country", "Address", "ZipCode",
+            "ContactPerson", "Notes", "Valid", "Frozen"
         ]
         
         logger.info(f"Extrayendo {card_type} (grupos={groups}, desde={last_cardcode or 'inicio'})...")
@@ -220,20 +220,21 @@ class SAPServiceLayerClient:
             return []
         
         try:
-            # Determinar endpoint según tipo
-            if card_type == 'cSupplier':
-                endpoint = "VendorGroups"
-            else:
-                endpoint = "CustomerGroups"
-            
+            # SAP B1 usa BusinessPartnerGroups para todos los grupos
+            # Type: bbpgt_CustomerGroup o bbpgt_VendorGroup
             response = self.session.get(
-                f"{self.api_url}/{endpoint}",
-                params={"$select": "GroupCode,GroupName"},
+                f"{self.api_url}/BusinessPartnerGroups",
+                params={"$select": "Code,Name,Type"},
                 timeout=30
             )
             
             if response.status_code == 200:
-                return response.json().get('value', [])
+                all_groups = response.json().get('value', [])
+                # Filtrar por tipo
+                if card_type == 'cSupplier':
+                    return [g for g in all_groups if g.get('Type') == 'bbpgt_VendorGroup']
+                else:
+                    return [g for g in all_groups if g.get('Type') == 'bbpgt_CustomerGroup']
             else:
                 logger.warning(f"No se pudieron obtener grupos: {response.status_code}")
                 return []
@@ -309,7 +310,7 @@ def transform_partner(partner: dict, card_type: str) -> dict:
     
     # Teléfono: preferir fijo, si no móvil
     phone = (partner.get('Phone1') or partner.get('Phone2') or '').strip()
-    if not phone:
+    if not phone or phone == '0':
         phone = (partner.get('Cellular') or '').strip()
     
     # Nombre: CardForeignName suele ser el nombre comercial
@@ -322,10 +323,10 @@ def transform_partner(partner: dict, card_type: str) -> dict:
         'name': contact_name,
         'email': email,
         'phone': phone,
-        'city': partner.get('BillToCity', ''),
-        'country': partner.get('BillToCountry', 'ES'),
-        'address': partner.get('BillToStreet', ''),
-        'zipcode': partner.get('BillToZipCode', ''),
+        'city': partner.get('City', ''),
+        'country': partner.get('Country', 'ES'),
+        'address': partner.get('Address', ''),
+        'zipcode': partner.get('ZipCode', ''),
         'website': website,
         'group_code': partner.get('GroupCode', ''),
         'partner_type': 'customer' if card_type == 'cCustomer' else 'supplier',
@@ -486,11 +487,11 @@ def main():
         if args.list_groups:
             print("\n=== GRUPOS DE CLIENTES ===")
             for g in client.get_groups('cCustomer'):
-                print(f"  {g['GroupCode']}: {g['GroupName']}")
+                print(f"  {g['Code']}: {g['Name']}")
             
             print("\n=== GRUPOS DE PROVEEDORES ===")
             for g in client.get_groups('cSupplier'):
-                print(f"  {g['GroupCode']}: {g['GroupName']}")
+                print(f"  {g['Code']}: {g['Name']}")
             
             client.logout()
             return
