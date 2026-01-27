@@ -239,6 +239,18 @@ class DataForSEOClient:
             'Content-Type': 'application/json'
         }
     
+    # Mapeo de códigos de país a nombres válidos de DataForSEO
+    COUNTRY_MAP = {
+        'MX': 'Mexico',
+        'ES': 'Spain',
+        'CO': 'Colombia',
+        'AR': 'Argentina',
+        'CL': 'Chile',
+        'PE': 'Peru',
+        'US': 'United States',
+        'BR': 'Brazil',
+    }
+    
     def search_maps(self, keyword: str, location: str, country: str = 'MX',
                     depth: int = 20, offset: int = 0) -> Dict:
         """
@@ -254,16 +266,22 @@ class DataForSEOClient:
         Returns:
             {'results': [...], 'total': N}
         """
-        # Construir location string para DataForSEO
-        location_str = f"{location}, {country}" if country else location
+        # DataForSEO solo acepta país como location_name, no ciudades
+        # La ciudad va incluida en el keyword
+        country_name = self.COUNTRY_MAP.get(country, 'Mexico')
+        
+        # Keyword incluye la ubicación completa para búsqueda geolocalizada
+        full_keyword = f"{keyword} en {location}"
         
         payload = [{
-            "keyword": f"{keyword} {location}",
-            "location_name": location_str,
+            "keyword": full_keyword,
+            "location_name": country_name,
             "language_code": "es",
             "depth": depth,
             "offset": offset
         }]
+        
+        logger.debug(f"DataForSEO request: keyword='{full_keyword}', location='{country_name}'")
         
         try:
             resp = requests.post(
