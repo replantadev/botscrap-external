@@ -308,7 +308,7 @@ class MultiBotDaemon:
         
         # Verificar límite diario (NO aplica para bots SAP - son extractores)
         bot_type = bot.get('bot_type', 'direct')
-        if bot_type != 'sap':
+        if bot_type not in ('sap', 'sap_sl'):
             leads_today = int(bot.get('leads_today', 0) or 0)
             daily_limit = int(bot.get('config_daily_limit', 50) or 50)
             if leads_today >= daily_limit:
@@ -357,7 +357,7 @@ class MultiBotDaemon:
         
         # Calcular cuántos leads buscar en esta ejecución
         # Bots SAP y Geographic son extractores/crawlers, no tienen límite tradicional
-        if bot_type in ('sap', 'geographic'):
+        if bot_type in ('sap', 'sap_sl', 'geographic'):
             leads_per_run = 0  # No usa este parámetro, tiene su propia lógica
         else:
             remaining = max_leads - leads_today
@@ -380,6 +380,7 @@ class MultiBotDaemon:
             'resentment': 'resentment',
             'autonomous': 'autonomous',
             'sap': 'sap',
+            'sap_sl': 'sap_sl',  # SAP Service Layer (REST API)
             'geographic': 'geographic'
         }
         subcommand = subcommand_map.get(bot_type, 'direct')
@@ -439,10 +440,19 @@ class MultiBotDaemon:
                 cmd.extend(['--config', config_file])
         
         elif subcommand == 'sap':
-            # Bot SAP Business One - usa sap_sync.py (ligero y eficiente)
+            # Bot SAP Business One - usa sap_sync.py (conexión SQL directa)
             cmd = [
                 '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
                 'sap_sync.py',
+                '--bot-id', str(bot_id),
+                '--api-key', self.api_key
+            ]
+        
+        elif subcommand == 'sap_sl':
+            # Bot SAP Service Layer - usa sap_service_layer.py (REST API)
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'sap_service_layer.py',
                 '--bot-id', str(bot_id),
                 '--api-key', self.api_key
             ]
@@ -461,7 +471,7 @@ class MultiBotDaemon:
             ]
         
         # Solo añadir list-id si no es SAP ni Geographic (obtienen de su config)
-        if target_list_id and subcommand not in ('sap', 'geographic'):
+        if target_list_id and subcommand not in ('sap', 'sap_sl', 'geographic'):
             cmd.extend(['--list-id', str(target_list_id)])
         
         logger.info(f"🚀 [{bot_name}] Type: {bot_type}")
