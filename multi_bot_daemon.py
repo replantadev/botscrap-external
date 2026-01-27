@@ -383,15 +383,21 @@ class MultiBotDaemon:
             'sap_sl': 'sap_sl',  # SAP Service Layer (REST API)
             'geographic': 'geographic'
         }
-        subcommand = subcommand_map.get(bot_type, 'direct')
+        # Normalizar bot_type (strip espacios, lowercase)
+        bot_type_clean = (bot_type or 'direct').strip().lower()
+        subcommand = subcommand_map.get(bot_type_clean, 'direct')
         
-        cmd = [
-            '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
-            'run_bot.py', subcommand,
-        ]
+        logger.debug(f"[{bot_name}] bot_type='{bot_type}' -> bot_type_clean='{bot_type_clean}' -> subcommand='{subcommand}'")
+        
+        # Comando base - se sobreescribe para tipos especiales
+        cmd = None
         
         # Add parameters based on bot type
         if subcommand == 'direct':
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'run_bot.py', 'direct',
+            ]
             if query:
                 cmd.extend(['--query', query])
             cmd.extend(['--limit', str(leads_per_run)])
@@ -405,6 +411,10 @@ class MultiBotDaemon:
                 cmd.extend(['--max-speed', str(max_speed)])
                 
         elif subcommand == 'social':
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'run_bot.py', 'social',
+            ]
             cmd.extend(['--limit', str(leads_per_run)])
             if social_platforms:
                 cmd.extend(['--platforms', social_platforms])
@@ -418,6 +428,10 @@ class MultiBotDaemon:
                 cmd.extend(['--config', config_file])
                 
         elif subcommand == 'resentment':
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'run_bot.py', 'resentment',
+            ]
             cmd.extend(['--limit', str(leads_per_run)])
             if resentment_sources:
                 cmd.extend(['--sources', resentment_sources])
@@ -431,6 +445,10 @@ class MultiBotDaemon:
                 cmd.extend(['--config', config_file])
                 
         elif subcommand == 'autonomous':
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'run_bot.py', 'autonomous',
+            ]
             cmd.extend(['--limit', str(leads_per_run)])
             if query:
                 cmd.extend(['--seed-query', query])
@@ -473,6 +491,11 @@ class MultiBotDaemon:
         # Solo añadir list-id si no es SAP ni Geographic (obtienen de su config)
         if target_list_id and subcommand not in ('sap', 'sap_sl', 'geographic'):
             cmd.extend(['--list-id', str(target_list_id)])
+        
+        # Validar que se creó un comando
+        if cmd is None:
+            logger.error(f"[{bot_name}] No command configured for bot_type '{bot_type}' (subcommand: {subcommand})")
+            return {'success': False, 'error': f"Unknown bot type: {bot_type}"}
         
         logger.info(f"🚀 [{bot_name}] Type: {bot_type}")
         logger.info(f"🚀 [{bot_name}] Executing: {' '.join(cmd)}")
