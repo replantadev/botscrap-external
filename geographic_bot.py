@@ -159,6 +159,52 @@ class StaffKitClient:
             logger.error(f"Error saving lead: {e}")
             return {'success': False, 'error': str(e)}
     
+    def regenerate_queue(self, bot_id: int, bot_config: Dict) -> bool:
+        """
+        Regenerar cola de búsquedas cuando se vacía.
+        Crea nuevas búsquedas basadas en la config del bot.
+        """
+        try:
+            keyword = bot_config.get('config_geo_keyword', '')
+            country = bot_config.get('config_geo_country', 'MX')
+            list_id = bot_config.get('target_list_id', 0)
+            max_cities = int(bot_config.get('config_geo_max_cities', 50) or 50)
+            max_pages = int(bot_config.get('config_geo_max_pages', 3) or 3)
+            
+            if not keyword or not list_id:
+                logger.warning("No se puede regenerar cola: falta keyword o list_id")
+                return False
+            
+            logger.info(f"🔄 Regenerando cola: keyword='{keyword}', country={country}, max_cities={max_cities}")
+            
+            resp = requests.post(
+                f"{STAFFKIT_URL}/api/v2/geographic.php",
+                json={
+                    'action': 'generate_plan',
+                    'bot_id': bot_id,
+                    'list_id': list_id,
+                    'keyword': keyword,
+                    'country': country,
+                    'max_cities': max_cities,
+                    'max_pages': max_pages
+                },
+                headers=self.headers,
+                timeout=30
+            )
+            
+            data = resp.json()
+            if data.get('success'):
+                added = data.get('searches_added', 0)
+                logger.info(f"✅ Cola regenerada: {added} nuevas búsquedas")
+                return added > 0
+            else:
+                logger.error(f"Error regenerando cola: {data.get('error', 'Unknown')}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error regenerando cola: {e}")
+            return False
+
     def get_bot_config(self, bot_id: int) -> Dict:
         """Obtener configuración del bot"""
         try:
@@ -491,12 +537,23 @@ class GeographicBot:
         logger.info("=" * 60)
         
         searches_done = 0
+        queue_regenerated = False  # Solo regenerar una vez por ejecución
         
         while searches_done < max_searches:
             # Obtener siguiente búsqueda
             search = self.staffkit.get_next_search(self.bot_id)
             
             if not search:
+                # Cola vacía - intentar regenerar si no lo hicimos ya
+                if not queue_regenerated:
+                    logger.info("Cola vacía - intentando regenerar...")
+                    bot_config = self.staffkit.get_bot_config(self.bot_id)
+                    if self.staffkit.regenerate_queue(self.bot_id, bot_config):
+                        queue_regenerated = True
+                        continue  # Reintentar obtener búsqueda
+                    else:
+                        logger.info("No se pudo regenerar la cola o ya está completa")
+                
                 logger.info("No hay más búsquedas pendientes")
                 break
             

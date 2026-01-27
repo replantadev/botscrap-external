@@ -279,6 +279,12 @@ class MultiBotDaemon:
     
     def should_run_bot(self, bot):
         """Determina si un bot debe ejecutarse ahora"""
+        bot_type = (bot.get('bot_type') or 'direct').strip().lower()
+        
+        # Bots SAP se ejecutan por cron, no por daemon
+        if bot_type in ('sap', 'sap_sl'):
+            return False, "SAP bots run via cron, not daemon"
+        
         # Si tiene run_now=1, ejecutar inmediatamente (forzado desde UI)
         if bot.get('run_now') and str(bot.get('run_now')) == '1':
             return True, "forced (run_now)"
