@@ -20,13 +20,86 @@ import signal
 import subprocess
 import sys
 import time
+import fcntl
 from datetime import datetime
 import requests
 
-# Configuración de logging
-LOG_FILE = '/var/www/vhosts/territoriodrasanvicr.com/b/daemon.log'
+# Configuración de paths
+BASE_DIR = '/var/www/vhosts/territoriodrasanvicr.com/b'
+LOG_FILE = f'{BASE_DIR}/daemon.log'
+PID_FILE = f'{BASE_DIR}/daemon.pid'
+LOCK_FILE = f'{BASE_DIR}/daemon.lock'
+
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
+# ============================================================================
+# PROTECCIÓN CONTRA MÚLTIPLES INSTANCIAS
+# ============================================================================
+def acquire_lock():
+    """Adquirir lock exclusivo para evitar múltiples daemons"""
+    global lock_file_handle
+    try:
+        lock_file_handle = open(LOCK_FILE, 'w')
+        fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Escribir PID actual
+        lock_file_handle.write(str(os.getpid()))
+        lock_file_handle.flush()
+        return True
+    except (IOError, OSError) as e:
+        # Otro proceso tiene el lock
+        try:
+            with open(PID_FILE, 'r') as f:
+                existing_pid = f.read().strip()
+            print(f"❌ ERROR: Ya hay un daemon corriendo (PID: {existing_pid})")
+            print(f"   Si el proceso no existe, borra: {LOCK_FILE} y {PID_FILE}")
+        except:
+            print(f"❌ ERROR: No se pudo adquirir el lock. Otro daemon puede estar corriendo.")
+        return False
+
+def release_lock():
+    """Liberar lock al terminar"""
+    global lock_file_handle
+    try:
+        if lock_file_handle:
+            fcntl.flock(lock_file_handle.fileno(), fcntl.LOCK_UN)
+            lock_file_handle.close()
+        # Limpiar archivos
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+    except:
+        pass
+
+def write_pid():
+    """Escribir PID a archivo para referencia"""
+    with open(PID_FILE, 'w') as f:
+        f.write(str(os.getpid()))
+
+def check_existing_daemon():
+    """Verificar si hay otro daemon y matarlo si está zombie"""
+    if os.path.exists(PID_FILE):
+        try:
+            with open(PID_FILE, 'r') as f:
+                old_pid = int(f.read().strip())
+            # Verificar si el proceso existe
+            os.kill(old_pid, 0)  # Signal 0 = solo verifica existencia
+            return old_pid  # Proceso existe
+        except (ProcessLookupError, ValueError):
+            # Proceso no existe, limpiar archivos stale
+            print(f"🧹 Limpiando archivos de daemon anterior (PID no existe)")
+            if os.path.exists(PID_FILE):
+                os.remove(PID_FILE)
+            if os.path.exists(LOCK_FILE):
+                os.remove(LOCK_FILE)
+            return None
+        except PermissionError:
+            return old_pid  # Proceso existe pero no tenemos permiso
+    return None
+
+lock_file_handle = None
+
+# Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -564,6 +637,7 @@ class MultiBotDaemon:
         self.update_daemon_status('stopped', [])
         self.log_to_staffkit('INFO', 'Daemon stopped')
         logger.info("🛑 Daemon stopped")
+        release_lock()
 
 
 def main():
@@ -571,18 +645,60 @@ def main():
     parser.add_argument('--api-key', required=True, help='StaffKit API key')
     parser.add_argument('--staffkit-url', default='https://staff.replanta.dev', help='StaffKit URL')
     parser.add_argument('--once', action='store_true', help='Run once and exit (for testing)')
+    parser.add_argument('--force', action='store_true', help='Force start, killing existing daemon')
     
     args = parser.parse_args()
     
-    daemon = MultiBotDaemon(
-        staffkit_url=args.staffkit_url,
-        api_key=args.api_key
-    )
+    # ========================================================================
+    # PROTECCIÓN: Verificar si ya hay un daemon corriendo
+    # ========================================================================
+    existing_pid = check_existing_daemon()
+    if existing_pid:
+        if args.force:
+            print(f"⚠️ Forzando: matando daemon existente (PID: {existing_pid})")
+            try:
+                os.kill(existing_pid, signal.SIGTERM)
+                time.sleep(2)
+                # Si sigue vivo, SIGKILL
+                try:
+                    os.kill(existing_pid, 0)
+                    os.kill(existing_pid, signal.SIGKILL)
+                    time.sleep(1)
+                except ProcessLookupError:
+                    pass
+            except:
+                pass
+            # Limpiar archivos
+            if os.path.exists(PID_FILE):
+                os.remove(PID_FILE)
+            if os.path.exists(LOCK_FILE):
+                os.remove(LOCK_FILE)
+        else:
+            print(f"❌ ERROR: Ya hay un daemon corriendo (PID: {existing_pid})")
+            print(f"   Usa --force para matar el existente y reiniciar")
+            print(f"   O ejecuta: kill {existing_pid}")
+            sys.exit(1)
     
-    if args.once:
-        daemon.check_and_run_bots()
-    else:
-        daemon.run_forever()
+    # Adquirir lock exclusivo
+    if not acquire_lock():
+        sys.exit(1)
+    
+    # Escribir PID
+    write_pid()
+    print(f"✅ Daemon iniciando con PID: {os.getpid()}")
+    
+    try:
+        daemon = MultiBotDaemon(
+            staffkit_url=args.staffkit_url,
+            api_key=args.api_key
+        )
+        
+        if args.once:
+            daemon.check_and_run_bots()
+        else:
+            daemon.run_forever()
+    finally:
+        release_lock()
 
 
 if __name__ == '__main__':
