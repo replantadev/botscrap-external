@@ -385,7 +385,7 @@ class MultiBotDaemon:
                 '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
                 'geographic_bot.py',
                 '--bot-id', str(bot_id),
-                '--api-token', self.api_key,
+                '--api-key', self.api_key,
                 '--searches-per-run', str(searches_per_run),
                 '--dataforseo-login', dataforseo_login,
                 '--dataforseo-password', dataforseo_password,
