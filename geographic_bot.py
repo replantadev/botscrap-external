@@ -595,13 +595,23 @@ class GeographicBot:
                 logger.info(f"Esperando {self.delay_between_searches}s antes de siguiente búsqueda...")
                 time.sleep(self.delay_between_searches)
         
-        # Resumen
+        # Resumen - formato parseble por daemon
         logger.info("=" * 60)
         logger.info("RESUMEN")
         logger.info(f"  Búsquedas procesadas: {self.stats['searches_processed']}")
         logger.info(f"  Leads totales: {self.stats['total_leads']}")
         logger.info(f"  Duplicados: {self.stats['total_duplicates']}")
         logger.info("=" * 60)
+        
+        # Líneas con formato estándar para que el daemon las parsee
+        logger.info(f"STATS:leads_found:{self.stats['total_leads']}")
+        logger.info(f"STATS:leads_saved:{self.stats['total_leads']}")
+        logger.info(f"STATS:leads_duplicates:{self.stats['total_duplicates']}")
+        logger.info(f"STATS:searches_done:{self.stats['searches_processed']}")
+        
+        # Indicar si la cola quedó vacía
+        if self.stats['searches_processed'] == 0:
+            logger.info("STATS:queue_empty:true")
         
         return self.stats
 

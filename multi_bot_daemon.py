@@ -288,6 +288,22 @@ class MultiBotDaemon:
         except:
             pass
     
+    def disable_bot(self, bot_id):
+        """Desactiva un bot (is_enabled = 0)"""
+        try:
+            r = requests.post(
+                f"{self.staffkit_url}/api/bots.php",
+                data={
+                    'action': 'disable_bot',
+                    'bot_id': bot_id
+                },
+                headers=self._headers(),
+                timeout=5
+            )
+            return r.status_code == 200
+        except:
+            return False
+    
     def should_run_bot(self, bot):
         """Determina si un bot debe ejecutarse ahora"""
         bot_type = (bot.get('bot_type') or 'direct').strip().lower()
@@ -532,7 +548,23 @@ class MultiBotDaemon:
                 line = line.strip()
                 if line:
                     logger.info(f"  [{bot_name}] {line}")
-                    # Parse output for stats
+                    # Parse output for stats - formato estándar STATS:key:value
+                    if line.startswith('STATS:'):
+                        try:
+                            parts = line.split(':')
+                            if len(parts) >= 3:
+                                key = parts[1]
+                                value = parts[2]
+                                if key == 'leads_found':
+                                    result['leads_found'] = int(value)
+                                elif key == 'leads_saved':
+                                    result['leads_saved'] = int(value)
+                                elif key == 'leads_duplicates':
+                                    result['leads_duplicates'] = int(value)
+                                elif key == 'queue_empty':
+                                    result['queue_empty'] = value.lower() == 'true'
+                        except: pass
+                    # Formato legacy para compatibilidad
                     line_lower = line.lower()
                     if 'encontrados:' in line_lower:
                         try:
@@ -599,6 +631,19 @@ class MultiBotDaemon:
             
             if result['success']:
                 logger.info(f"✅ [{bot_name}] Run #{run_id} done: {result['leads_saved']} saved, {result['leads_duplicates']} duplicates")
+                
+                # Notificar si la cola quedó vacía (para bots geográficos)
+                if result.get('queue_empty'):
+                    notify_on_complete = bot.get('notify_on_complete', 1)
+                    auto_disable = bot.get('auto_disable_on_complete', 0)
+                    
+                    if notify_on_complete:
+                        self.send_notification(bot_id, bot_name, 'queue_complete',
+                            f'✅ Cola de búsquedas completada. {result["leads_saved"]} leads guardados en total.')
+                    
+                    if auto_disable:
+                        self.disable_bot(bot_id)
+                        logger.info(f"🔌 [{bot_name}] Auto-disabled after completing queue")
             else:
                 logger.error(f"❌ [{bot_name}] Run #{run_id} failed: {result.get('error')}")
                 if notify_on_error:
