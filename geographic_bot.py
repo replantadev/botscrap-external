@@ -137,6 +137,12 @@ class StaffKitClient:
             data = resp.json()
             if data.get('success'):
                 return data.get('duplicates', {})
+            else:
+                # Log error pero continuar (no bloquear el bot)
+                error_msg = data.get('error', 'Unknown error')
+                logger.warning(f"check_duplicates_batch failed: {error_msg}")
+                # Retornar vacío = asumir que no hay duplicados (se verificará en save_lead)
+                return {}
         except Exception as e:
             logger.error(f"Error checking duplicates: {e}")
         return {}
