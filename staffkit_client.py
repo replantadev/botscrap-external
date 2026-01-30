@@ -5,6 +5,7 @@ Cliente para comunicación con StaffKit desde VPS externo
 """
 
 import os
+import re
 import time
 import json
 import logging
@@ -15,6 +16,35 @@ import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_domain(url: str) -> str:
+    """
+    Normalizar URL/dominio para comparaciones consistentes.
+    Quita protocolo, www., trailing slash y paths.
+    
+    Args:
+        url: URL o dominio a normalizar
+        
+    Returns:
+        Dominio normalizado (ej: 'example.com')
+    """
+    if not url:
+        return ''
+    
+    url = url.lower().strip()
+    # Quitar protocolo
+    url = re.sub(r'^https?://', '', url)
+    # Quitar www.
+    url = re.sub(r'^www\.', '', url)
+    # Quitar trailing slash
+    url = url.rstrip('/')
+    # Quedarse solo con el dominio (sin path)
+    url = url.split('/')[0]
+    # Quitar puerto si existe
+    url = url.split(':')[0]
+    
+    return url
 
 
 class StaffKitClient:
@@ -122,10 +152,18 @@ class StaffKitClient:
         """
         Verificar si un dominio ya existe en StaffKit
         
+        Args:
+            domain: URL o dominio a verificar (se normaliza automáticamente)
+        
         Returns:
             True si es duplicado, False si es nuevo
         """
         if not self.enabled:
+            return False
+        
+        # Normalizar dominio antes de enviar
+        domain = normalize_domain(domain)
+        if not domain:
             return False
         
         try:
@@ -152,18 +190,33 @@ class StaffKitClient:
         Verificar múltiples dominios en una sola petición
         
         Args:
-            domains: Lista de dominios/URLs a verificar
+            domains: Lista de dominios/URLs a verificar (se normalizan automáticamente)
             
         Returns:
-            Dict con {domain: is_duplicate}
+            Dict con {original_domain: is_duplicate}
         """
         if not self.enabled or not domains:
+            return {d: False for d in domains}
+        
+        # Normalizar dominios y crear mapeo original -> normalizado
+        normalized_map = {}  # {normalized: [originals]}
+        original_to_normalized = {}  # {original: normalized}
+        
+        for domain in domains:
+            normalized = normalize_domain(domain)
+            if normalized:
+                original_to_normalized[domain] = normalized
+                if normalized not in normalized_map:
+                    normalized_map[normalized] = []
+                normalized_map[normalized].append(domain)
+        
+        if not normalized_map:
             return {d: False for d in domains}
         
         try:
             response = requests.post(
                 f"{self.api_url}/api/v2/check-duplicate",
-                json={'domains': domains},
+                json={'domains': list(normalized_map.keys())},
                 headers=self._headers(),
                 timeout=10
             )
@@ -176,10 +229,17 @@ class StaffKitClient:
                 new_count = data.get('new_count', 0)
                 logger.info(f"📊 StaffKit check: {duplicates} duplicates, {new_count} new")
                 
-                return {
-                    domain: results.get(domain, {}).get('exists', False)
-                    for domain in domains
-                }
+                # Mapear resultados de vuelta a dominios originales
+                output = {}
+                for original, normalized in original_to_normalized.items():
+                    output[original] = results.get(normalized, {}).get('exists', False)
+                
+                # Incluir dominios que no se pudieron normalizar
+                for domain in domains:
+                    if domain not in output:
+                        output[domain] = False
+                
+                return output
             else:
                 logger.warning(f"StaffKit batch API error: {response.status_code}")
                 return {d: False for d in domains}
