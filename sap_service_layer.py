@@ -139,7 +139,7 @@ class SAPServiceLayerClient:
         
         all_partners = []
         skip = 0
-        page_size = 100  # Service Layer suele limitar a 100 por página
+        page_size = 20  # SAP Service Layer tiene límite de 20 por defecto
         
         # Construir filtro OData
         filters = [f"CardType eq '{card_type}'"]
@@ -383,17 +383,20 @@ def send_to_staffkit(contacts: list, list_id: int, api_key: str) -> dict:
 # ============================================================================
 
 def get_bot_config(bot_id: int, api_key: str) -> Optional[dict]:
-    """Obtiene configuración del bot desde StaffKit"""
+    """Obtiene configuración del bot desde StaffKit API v2"""
     try:
         response = requests.get(
-            f"{STAFFKIT_URL}/api/bots.php",
-            params={'action': 'get_bot', 'bot_id': bot_id, 'api_key': api_key},
+            f"{STAFFKIT_URL}/api/v2/external-bot.php",
+            params={'id': bot_id},
+            headers={'Authorization': f'Bearer {api_key}'},
             timeout=30
         )
         if response.status_code == 200:
             data = response.json()
             if data.get('success'):
                 return data.get('bot')
+        else:
+            logger.error(f"API returned {response.status_code}: {response.text[:200]}")
     except Exception as e:
         logger.error(f"Error obteniendo config del bot: {e}")
     return None
@@ -446,7 +449,8 @@ def main():
             'password': bot_config.get('config_sap_password', ''),
             'groups': bot_config.get('config_sap_branches', ''),
             'list_id': bot_config.get('target_list_id'),
-            'corporate_only': bool(bot_config.get('config_sap_corporate_only', 1)),
+            'corporate_only': bool(int(bot_config.get('config_sap_corporate_only', 1) or 0)),
+            'include_inactive': bool(int(bot_config.get('config_sap_sl_include_inactive', 0) or 0)),
             'limit': int(bot_config.get('config_sap_limit', 500) or 500)
         }
     else:
@@ -524,7 +528,8 @@ def main():
                 card_type=card_type,
                 groups=groups,
                 last_cardcode=last_cardcode,
-                limit=config['limit']
+                limit=config['limit'],
+                include_inactive=config.get('include_inactive', False)
             )
             
             # Transformar y filtrar
