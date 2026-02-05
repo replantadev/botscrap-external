@@ -545,6 +545,7 @@ class MultiBotDaemon:
                 if line:
                     logger.info(f"  [{bot_name}] {line}")
                     # Parse output for stats - formato estándar STATS:key:value
+                    # MUST be parsed first and exclusively to avoid legacy format overwriting
                     if line.startswith('STATS:'):
                         try:
                             parts = line.split(':')
@@ -560,19 +561,29 @@ class MultiBotDaemon:
                                 elif key == 'queue_empty':
                                     result['queue_empty'] = value.lower() == 'true'
                         except: pass
-                    # Formato legacy para compatibilidad
+                        continue  # IMPORTANT: skip legacy parsing for STATS lines
+                    
+                    # Formato legacy para compatibilidad (solo si NO es STATS)
+                    # Must extract value carefully to avoid timestamp interference
                     line_lower = line.lower()
-                    if 'encontrados:' in line_lower:
+                    if 'encontrados:' in line_lower and '[info]' not in line_lower.split('encontrados')[0]:
                         try:
-                            result['leads_found'] = int(line.split(':')[1].strip())
+                            # Find "encontrados:" and take value after it
+                            idx = line_lower.index('encontrados:')
+                            after = line[idx + len('encontrados:'):].strip()
+                            result['leads_found'] = int(after.split()[0]) if after else 0
                         except: pass
-                    elif 'guardados:' in line_lower:
+                    elif 'guardados:' in line_lower and '[info]' not in line_lower.split('guardados')[0]:
                         try:
-                            result['leads_saved'] = int(line.split(':')[1].strip())
+                            idx = line_lower.index('guardados:')
+                            after = line[idx + len('guardados:'):].strip()
+                            result['leads_saved'] = int(after.split()[0]) if after else 0
                         except: pass
-                    elif 'duplicados:' in line_lower:
+                    elif 'duplicados:' in line_lower and '[info]' not in line_lower.split('duplicados')[0]:
                         try:
-                            result['leads_duplicates'] = int(line.split(':')[1].strip())
+                            idx = line_lower.index('duplicados:')
+                            after = line[idx + len('duplicados:'):].strip()
+                            result['leads_duplicates'] = int(after.split()[0]) if after else 0
                         except: pass
             
             process.wait()
