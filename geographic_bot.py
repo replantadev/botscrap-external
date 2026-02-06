@@ -292,7 +292,7 @@ class GeographicBot:
         search_id = search['id']
         keyword = search['keyword']
         location = search['location']
-        max_pages = search.get('max_pages', 3)
+        max_pages = int(search.get('max_pages', 3))
         
         self.log(f"Procesando: '{keyword}' en {location}")
         
