@@ -370,6 +370,7 @@ def get_bot_config(api_key: str, bot_id: int) -> dict:
                 'user': bot.get('config_sap_user', ''),
                 'password': bot.get('config_sap_password', ''),
                 'branches': [b.strip() for b in (bot.get('config_sap_branches', '') or '').split(',') if b.strip()],
+                'card_types': [t.strip() for t in (bot.get('config_sap_card_types', 'C') or 'C').split(',') if t.strip()],
                 'corporate_only': bool(bot.get('config_sap_corporate_only', 1)),
                 'include_with_web': bool(bot.get('config_sap_include_with_web', 0)),
                 'limit': int(bot.get('config_sap_limit', 5000) or 5000),
