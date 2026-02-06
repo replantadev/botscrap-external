@@ -1,663 +1,404 @@
 #!/usr/bin/env python3
 """
-Geographic Crawler Bot
-======================
-Barre un país por sector usando cola de búsquedas en StaffKit.
-
-Características:
-- Procesa cola de búsquedas geográficas
-- Usa DataForSEO (económico) o Google Places
-- Paginación inteligente (continúa donde quedó)
-- Deduplicación antes de insertar
-- Rate limiting configurable
-- Modo económico: para cuando encuentra pocos resultados
-
-Uso:
-    python geographic_bot.py --bot-id 5 --api-key "sk_xxx"
-    python geographic_bot.py --bot-id 5 --api-key "sk_xxx" --searches-per-run 10
+Geographic Crawler Bot - Barre países enteros por sector/keyword
+Usa DataForSEO Maps API para búsquedas económicas ($0.002/búsqueda)
 """
 
 import argparse
-import base64
-import json
-import logging
-import re
-import sys
-import time
-from datetime import datetime
-from typing import Dict, List, Optional
-from urllib.parse import urlparse
-
 import requests
+import json
+import time
+import sys
+import os
+from datetime import datetime
+from typing import Optional, Dict, List, Any
 
-# ============================================================================
-# CONFIGURACIÓN
-# ============================================================================
-
-STAFFKIT_URL = 'https://staff.replanta.dev'
-
-# DataForSEO credentials (se obtienen de config del bot)
-DATAFORSEO_LOGIN = None
-DATAFORSEO_PASSWORD = None
-
-# Rate limiting
-DEFAULT_DELAY_BETWEEN_SEARCHES = 30  # segundos entre búsquedas
-DEFAULT_DELAY_BETWEEN_PAGES = 5      # segundos entre páginas
-DEFAULT_SEARCHES_PER_RUN = 20        # búsquedas por ejecución
-
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# STAFFKIT API CLIENT
-# ============================================================================
-
-class StaffKitClient:
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.headers = {
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type': 'application/json'
-        }
-    
-    def get_next_search(self, bot_id: int) -> Optional[Dict]:
-        """Obtener siguiente búsqueda de la cola"""
-        try:
-            resp = requests.get(
-                f"{STAFFKIT_URL}/api/v2/geographic.php",
-                params={'action': 'get_next_search', 'bot_id': bot_id},
-                headers=self.headers,
-                timeout=10
-            )
-            data = resp.json()
-            if data.get('success'):
-                return data.get('search')
-        except Exception as e:
-            logger.error(f"Error getting next search: {e}")
-        return None
-    
-    def update_search_progress(self, search_id: int, current_page: int, 
-                                leads_added: int, leads_duplicates: int,
-                                results_found: int, api_cost: float):
-        """Actualizar progreso de búsqueda"""
-        try:
-            requests.post(
-                f"{STAFFKIT_URL}/api/v2/geographic.php",
-                json={
-                    'action': 'update_search_progress',
-                    'search_id': search_id,
-                    'current_page': current_page,
-                    'leads_added': leads_added,
-                    'leads_duplicates': leads_duplicates,
-                    'results_found': results_found,
-                    'api_cost': api_cost
-                },
-                headers=self.headers,
-                timeout=10
-            )
-        except Exception as e:
-            logger.error(f"Error updating progress: {e}")
-    
-    def complete_search(self, search_id: int, status: str = 'completed', error: str = None):
-        """Marcar búsqueda como completada"""
-        try:
-            requests.post(
-                f"{STAFFKIT_URL}/api/v2/geographic.php",
-                json={
-                    'action': 'complete_search',
-                    'search_id': search_id,
-                    'status': status,
-                    'error': error
-                },
-                headers=self.headers,
-                timeout=10
-            )
-        except Exception as e:
-            logger.error(f"Error completing search: {e}")
-    
-    def check_duplicates_batch(self, list_id: int, domains: List[str]) -> Dict[str, bool]:
-        """Verificar qué dominios ya existen en la lista"""
-        try:
-            resp = requests.post(
-                f"{STAFFKIT_URL}/api/bots.php",
-                json={
-                    'action': 'check_duplicates_batch',
-                    'list_id': list_id,
-                    'domains': domains
-                },
-                headers=self.headers,
-                timeout=15
-            )
-            data = resp.json()
-            if data.get('success'):
-                return data.get('duplicates', {})
-            else:
-                # Log error pero continuar (no bloquear el bot)
-                error_msg = data.get('error', 'Unknown error')
-                logger.warning(f"check_duplicates_batch failed: {error_msg}")
-                # Retornar vacío = asumir que no hay duplicados (se verificará en save_lead)
-                return {}
-        except Exception as e:
-            logger.error(f"Error checking duplicates: {e}")
-        return {}
-    
-    def save_lead(self, list_id: int, lead: Dict) -> Dict:
-        """Guardar lead en StaffKit"""
-        try:
-            resp = requests.post(
-                f"{STAFFKIT_URL}/api/bots.php",
-                json={
-                    'action': 'save_lead',
-                    'list_id': list_id,
-                    'lead_data': json.dumps(lead)
-                },
-                headers=self.headers,
-                timeout=10
-            )
-            return resp.json()
-        except Exception as e:
-            logger.error(f"Error saving lead: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    def regenerate_queue(self, bot_id: int, bot_config: Dict) -> bool:
-        """
-        Regenerar cola de búsquedas cuando se vacía.
-        Crea nuevas búsquedas basadas en la config del bot.
-        """
-        try:
-            keyword = bot_config.get('config_geo_keyword', '')
-            country = bot_config.get('config_geo_country', 'MX')
-            list_id = bot_config.get('target_list_id', 0)
-            max_cities = int(bot_config.get('config_geo_max_cities', 50) or 50)
-            max_pages = int(bot_config.get('config_geo_max_pages', 3) or 3)
-            
-            if not keyword or not list_id:
-                logger.warning("No se puede regenerar cola: falta keyword o list_id")
-                return False
-            
-            logger.info(f"🔄 Regenerando cola: keyword='{keyword}', country={country}, max_cities={max_cities}")
-            
-            resp = requests.post(
-                f"{STAFFKIT_URL}/api/v2/geographic.php",
-                json={
-                    'action': 'generate_plan',
-                    'bot_id': bot_id,
-                    'list_id': list_id,
-                    'keyword': keyword,
-                    'country': country,
-                    'max_cities': max_cities,
-                    'max_pages': max_pages
-                },
-                headers=self.headers,
-                timeout=30
-            )
-            
-            data = resp.json()
-            if data.get('success'):
-                added = data.get('searches_added', 0)
-                logger.info(f"✅ Cola regenerada: {added} nuevas búsquedas")
-                return added > 0
-            else:
-                logger.error(f"Error regenerando cola: {data.get('error', 'Unknown')}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error regenerando cola: {e}")
-            return False
-
-    def get_bot_config(self, bot_id: int) -> Dict:
-        """Obtener configuración del bot"""
-        try:
-            resp = requests.get(
-                f"{STAFFKIT_URL}/api/v2/external-bot",
-                params={'id': bot_id},
-                headers=self.headers,
-                timeout=10
-            )
-            if resp.ok:
-                data = resp.json()
-                return data.get('bot', {})
-        except Exception as e:
-            logger.error(f"Error getting bot config: {e}")
-        return {}
-
-
-# ============================================================================
-# DATAFORSEO API CLIENT
-# ============================================================================
-
-class DataForSEOClient:
-    """Cliente para DataForSEO Google Maps API"""
-    
-    BASE_URL = "https://api.dataforseo.com/v3"
-    COST_PER_TASK = 0.002  # $0.002 por tarea
-    
-    def __init__(self, login: str, password: str):
-        self.auth = base64.b64encode(f"{login}:{password}".encode()).decode()
-        self.headers = {
-            'Authorization': f'Basic {self.auth}',
-            'Content-Type': 'application/json'
-        }
-    
-    # Mapeo de códigos de país a nombres válidos de DataForSEO
-    COUNTRY_MAP = {
-        'MX': 'Mexico',
-        'ES': 'Spain',
-        'CO': 'Colombia',
-        'AR': 'Argentina',
-        'CL': 'Chile',
-        'PE': 'Peru',
-        'US': 'United States',
-        'BR': 'Brazil',
-    }
-    
-    def search_maps(self, keyword: str, location: str, country: str = 'MX',
-                    depth: int = 20, offset: int = 0) -> Dict:
-        """
-        Buscar en Google Maps via DataForSEO
-        
-        Args:
-            keyword: Término de búsqueda (ej: "floristerías")
-            location: Ciudad/zona (ej: "Ciudad de México, CDMX")
-            country: Código país (ej: "MX")
-            depth: Resultados por página (max 100)
-            offset: Offset para paginación
-        
-        Returns:
-            {'results': [...], 'total': N}
-        """
-        # DataForSEO solo acepta país como location_name, no ciudades
-        # La ciudad va incluida en el keyword
-        country_name = self.COUNTRY_MAP.get(country, 'Mexico')
-        
-        # Keyword incluye la ubicación completa para búsqueda geolocalizada
-        full_keyword = f"{keyword} en {location}"
-        
-        payload = [{
-            "keyword": full_keyword,
-            "location_name": country_name,
-            "language_code": "es",
-            "depth": depth,
-            "offset": offset
-        }]
-        
-        logger.debug(f"DataForSEO request: keyword='{full_keyword}', location='{country_name}'")
-        
-        try:
-            resp = requests.post(
-                f"{self.BASE_URL}/serp/google/maps/live/advanced",
-                json=payload,
-                headers=self.headers,
-                timeout=60
-            )
-            
-            data = resp.json()
-            
-            if data.get('status_code') != 20000:
-                logger.error(f"DataForSEO error: {data.get('status_message')}")
-                return {'results': [], 'total': 0, 'error': data.get('status_message')}
-            
-            tasks = data.get('tasks', [])
-            if not tasks:
-                return {'results': [], 'total': 0}
-            
-            task = tasks[0]
-            result = task.get('result', [{}])[0] if task.get('result') else {}
-            items = result.get('items', [])
-            total = result.get('items_count', 0)
-            
-            # Procesar resultados
-            results = []
-            for item in items:
-                if item.get('type') != 'maps_search':
-                    continue
-                
-                business = {
-                    'title': item.get('title', ''),
-                    'address': item.get('address', ''),
-                    'phone': item.get('phone', ''),
-                    'website': item.get('url', '') or item.get('domain', ''),
-                    'rating': item.get('rating', {}).get('value'),
-                    'reviews': item.get('rating', {}).get('votes_count', 0),
-                    'category': item.get('category', ''),
-                    'place_id': item.get('place_id', ''),
-                    'latitude': item.get('gps_coordinates', {}).get('latitude'),
-                    'longitude': item.get('gps_coordinates', {}).get('longitude')
-                }
-                
-                # Solo incluir si tiene datos útiles
-                if business['title'] and (business['website'] or business['phone']):
-                    results.append(business)
-            
-            return {
-                'results': results,
-                'total': total,
-                'cost': self.COST_PER_TASK
-            }
-            
-        except Exception as e:
-            logger.error(f"DataForSEO API error: {e}")
-            return {'results': [], 'total': 0, 'error': str(e)}
-
-
-# ============================================================================
-# UTILIDADES
-# ============================================================================
-
-def extract_domain(url: str) -> str:
-    """Extraer dominio de URL"""
-    if not url:
-        return ''
-    try:
-        if not url.startswith(('http://', 'https://')):
-            url = 'https://' + url
-        parsed = urlparse(url)
-        domain = parsed.netloc.lower()
-        # Quitar www
-        if domain.startswith('www.'):
-            domain = domain[4:]
-        return domain
-    except:
-        return ''
-
-
-def clean_phone(phone: str) -> str:
-    """Limpiar teléfono"""
-    if not phone:
-        return ''
-    # Quitar caracteres no numéricos excepto +
-    cleaned = re.sub(r'[^\d+]', '', phone)
-    return cleaned
-
-
-# ============================================================================
-# GEOGRAPHIC BOT
-# ============================================================================
+# Configuración
+STAFFKIT_URL = os.getenv('STAFFKIT_URL', 'https://staffkit.replanta.io')
 
 class GeographicBot:
-    """Bot que procesa cola de búsquedas geográficas"""
-    
-    def __init__(self, bot_id: int, api_key: str, config: Dict = None):
+    def __init__(self, bot_id: int, api_token: str, 
+                 dataforseo_login: str, dataforseo_password: str,
+                 searches_per_run: int = 5, delay_between_searches: float = 2.0,
+                 delay_between_pages: float = 1.0, verbose: bool = False):
+        
         self.bot_id = bot_id
-        self.staffkit = StaffKitClient(api_key)
-        self.config = config or {}
+        self.api_token = api_token
+        self.dataforseo_login = dataforseo_login
+        self.dataforseo_password = dataforseo_password
+        self.searches_per_run = searches_per_run
+        self.delay_between_searches = delay_between_searches
+        self.delay_between_pages = delay_between_pages
+        self.verbose = verbose
         
-        # Configurar DataForSEO
-        dataforseo_login = self.config.get('config_dataforseo_login', '')
-        dataforseo_password = self.config.get('config_dataforseo_password', '')
-        
-        if dataforseo_login and dataforseo_password:
-            self.dataforseo = DataForSEOClient(dataforseo_login, dataforseo_password)
-        else:
-            self.dataforseo = None
-            logger.warning("DataForSEO credentials not configured")
-        
-        # Rate limiting
-        self.delay_between_searches = int(self.config.get('config_delay_searches', DEFAULT_DELAY_BETWEEN_SEARCHES))
-        self.delay_between_pages = int(self.config.get('config_delay_pages', DEFAULT_DELAY_BETWEEN_PAGES))
-        
-        # Stats
+        # Stats de esta ejecución
         self.stats = {
             'searches_processed': 0,
-            'total_leads': 0,
-            'total_duplicates': 0,
-            'total_cost': 0.0
+            'leads_found': 0,
+            'leads_new': 0,
+            'api_cost': 0.0,
+            'errors': []
         }
-    
-    def process_search(self, search: Dict) -> Dict:
-        """
-        Procesar una búsqueda de la cola
         
-        Returns:
-            {'success': bool, 'leads_added': N, 'leads_duplicates': N}
+    def log(self, msg: str, level: str = 'INFO'):
+        """Log con timestamp"""
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        print(f"[{timestamp}] [{level}] {msg}")
+        
+    def debug(self, msg: str):
+        """Log solo si verbose"""
+        if self.verbose:
+            self.log(msg, 'DEBUG')
+            
+    def api_call(self, endpoint: str, method: str = 'GET', data: dict = None) -> Optional[dict]:
+        """Llamada a la API de StaffKit"""
+        url = f"{STAFFKIT_URL}/api/v2/geographic.php?action={endpoint}"
+        headers = {
+            'Authorization': f'Bearer {self.api_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, headers=headers, params=data, timeout=30)
+            else:
+                response = requests.post(url, headers=headers, json=data, timeout=30)
+                
+            if response.status_code == 200:
+                return response.json()
+            else:
+                self.log(f"API error {response.status_code}: {response.text}", 'ERROR')
+                return None
+        except Exception as e:
+            self.log(f"API exception: {str(e)}", 'ERROR')
+            return None
+            
+    def get_next_search(self) -> Optional[dict]:
+        """Obtiene la siguiente búsqueda pendiente"""
+        result = self.api_call('get_next_search', 'POST', {'bot_id': self.bot_id})
+        if result and result.get('success') and result.get('search'):
+            return result['search']
+        return None
+        
+    def update_search_progress(self, search_id: int, next_page: int, 
+                                leads_found: int, leads_new: int) -> bool:
+        """Actualiza progreso de una búsqueda (paginación)"""
+        result = self.api_call('update_search_progress', 'POST', {
+            'search_id': search_id,
+            'next_page_token': str(next_page),
+            'leads_found': leads_found,
+            'leads_new': leads_new
+        })
+        return result and result.get('success', False)
+        
+    def complete_search(self, search_id: int, leads_found: int, 
+                        leads_new: int, api_cost: float) -> bool:
+        """Marca una búsqueda como completada"""
+        result = self.api_call('complete_search', 'POST', {
+            'search_id': search_id,
+            'leads_found': leads_found,
+            'leads_new': leads_new,
+            'api_cost': api_cost
+        })
+        return result and result.get('success', False)
+        
+    def search_dataforseo_maps(self, keyword: str, location: str, 
+                                language_code: str = 'es', max_pages: int = 3) -> List[dict]:
         """
+        Busca en DataForSEO Maps API
+        Retorna lista de negocios encontrados
+        """
+        all_results = []
+        
+        # DataForSEO Maps API endpoint
+        url = "https://api.dataforseo.com/v3/serp/google/maps/live/advanced"
+        
+        for page in range(max_pages):
+            self.debug(f"DataForSEO página {page + 1}/{max_pages} para '{keyword}' en {location}")
+            
+            # Construir payload
+            payload = [{
+                "keyword": f"{keyword} {location}",
+                "location_name": location,
+                "language_code": language_code,
+                "device": "desktop",
+                "os": "windows",
+                "depth": 20  # resultados por página
+            }]
+            
+            try:
+                response = requests.post(
+                    url,
+                    auth=(self.dataforseo_login, self.dataforseo_password),
+                    json=payload,
+                    timeout=60
+                )
+                
+                if response.status_code != 200:
+                    self.log(f"DataForSEO error {response.status_code}", 'ERROR')
+                    break
+                    
+                data = response.json()
+                
+                # Contar costo
+                if 'cost' in data:
+                    self.stats['api_cost'] += data['cost']
+                    
+                # Extraer resultados
+                tasks = data.get('tasks', [])
+                if not tasks:
+                    break
+                    
+                task = tasks[0]
+                if task.get('status_code') != 20000:
+                    self.log(f"DataForSEO task error: {task.get('status_message')}", 'ERROR')
+                    break
+                    
+                results = task.get('result', [])
+                if not results:
+                    break
+                    
+                items = results[0].get('items', [])
+                if not items:
+                    self.debug(f"No más resultados en página {page + 1}")
+                    break
+                    
+                # Procesar items
+                for item in items:
+                    if item.get('type') == 'maps_search':
+                        business = self._parse_maps_result(item)
+                        if business:
+                            all_results.append(business)
+                            
+                self.debug(f"Encontrados {len(items)} negocios en página {page + 1}")
+                
+                # Delay entre páginas
+                if page < max_pages - 1:
+                    time.sleep(self.delay_between_pages)
+                    
+            except Exception as e:
+                self.log(f"DataForSEO exception: {str(e)}", 'ERROR')
+                self.stats['errors'].append(str(e))
+                break
+                
+        return all_results
+        
+    def _parse_maps_result(self, item: dict) -> Optional[dict]:
+        """Parsea un resultado de Maps a formato de lead"""
+        try:
+            # Extraer datos básicos
+            title = item.get('title', '')
+            if not title:
+                return None
+                
+            address_info = item.get('address_info', {}) or {}
+            
+            return {
+                'company': title,
+                'address': item.get('address', ''),
+                'phone': item.get('phone', ''),
+                'website': item.get('url', '') or item.get('domain', ''),
+                'city': address_info.get('city', ''),
+                'region': address_info.get('region', ''),
+                'country': address_info.get('country_code', ''),
+                'postal_code': address_info.get('zip', ''),
+                'category': item.get('category', ''),
+                'rating': item.get('rating', {}).get('value') if item.get('rating') else None,
+                'reviews_count': item.get('rating', {}).get('votes_count') if item.get('rating') else None,
+                'latitude': item.get('latitude'),
+                'longitude': item.get('longitude'),
+                'place_id': item.get('place_id', ''),
+                'cid': item.get('cid', ''),
+            }
+        except Exception as e:
+            self.debug(f"Error parsing result: {e}")
+            return None
+            
+    def add_leads_to_staffkit(self, search: dict, leads: List[dict]) -> int:
+        """
+        Añade leads al sistema StaffKit
+        Retorna número de leads nuevos añadidos
+        """
+        if not leads:
+            return 0
+            
+        # Obtener list_id del bot
+        list_id = search.get('list_id')
+        if not list_id:
+            self.log("No list_id en búsqueda", 'ERROR')
+            return 0
+            
+        new_count = 0
+        
+        for lead in leads:
+            # Preparar datos para StaffKit
+            lead_data = {
+                'list_id': list_id,
+                'empresa': lead.get('company', ''),
+                'website': lead.get('website', ''),
+                'telefono': lead.get('phone', ''),
+                'direccion': lead.get('address', ''),
+                'ciudad': lead.get('city', ''),
+                'region': lead.get('region', ''),
+                'pais': lead.get('country', ''),
+                'codigo_postal': lead.get('postal_code', ''),
+                'categoria': lead.get('category', ''),
+                'rating': lead.get('rating'),
+                'reviews': lead.get('reviews_count'),
+                'latitud': lead.get('latitude'),
+                'longitud': lead.get('longitude'),
+                'place_id': lead.get('place_id', ''),
+                'fuente': 'geographic_crawler',
+                'notas': f"Keyword: {search.get('keyword')}, Ciudad: {search.get('location')}"
+            }
+            
+            # Llamar API para añadir lead
+            result = self._add_lead(lead_data)
+            if result and result.get('is_new', False):
+                new_count += 1
+                
+        return new_count
+        
+    def _add_lead(self, lead_data: dict) -> Optional[dict]:
+        """Añade un lead individual a StaffKit"""
+        url = f"{STAFFKIT_URL}/api/bots.php"
+        headers = {
+            'Authorization': f'Bearer {self.api_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'action': 'add_lead_geographic',
+            **lead_data
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=30)
+            self.debug(f"API response {response.status_code}: {response.text[:200]}")
+            if response.status_code == 200:
+                result = response.json()
+                if not result.get('success', True):
+                    self.debug(f"API error: {result.get('error', 'unknown')}")
+                return result
+            else:
+                self.log(f"API HTTP error {response.status_code}: {response.text[:100]}", 'ERROR')
+        except Exception as e:
+            self.debug(f"Error adding lead: {e}")
+            
+        return None
+        
+    def process_search(self, search: dict) -> bool:
+        """Procesa una búsqueda individual"""
         search_id = search['id']
-        list_id = search['list_id']
         keyword = search['keyword']
         location = search['location']
-        country = search['country']
-        current_page = int(search['current_page'])
-        max_pages = int(search['max_pages'])
-        results_per_page = int(search.get('results_per_page', 20))
-        api_source = search.get('api_source', 'dataforseo')
+        max_pages = search.get('max_pages', 3)
         
-        logger.info(f"Procesando: '{keyword}' en {location} (página {current_page + 1}/{max_pages})")
+        self.log(f"Procesando: '{keyword}' en {location}")
         
-        result = {
-            'success': True,
-            'leads_added': 0,
-            'leads_duplicates': 0,
-            'pages_processed': 0
-        }
+        # Buscar en DataForSEO
+        leads = self.search_dataforseo_maps(keyword, location, max_pages=max_pages)
         
-        # Procesar páginas restantes
-        for page in range(current_page, max_pages):
-            offset = page * results_per_page
-            
-            # Buscar en DataForSEO
-            if api_source == 'dataforseo' and self.dataforseo:
-                search_result = self.dataforseo.search_maps(
-                    keyword=keyword,
-                    location=location,
-                    country=country,
-                    depth=results_per_page,
-                    offset=offset
-                )
-            else:
-                logger.error(f"API source '{api_source}' not supported or not configured")
-                self.staffkit.complete_search(search_id, 'failed', f"API '{api_source}' not configured")
-                result['success'] = False
-                return result
-            
-            if search_result.get('error'):
-                logger.error(f"Search error: {search_result['error']}")
-                self.staffkit.complete_search(search_id, 'failed', search_result['error'])
-                result['success'] = False
-                return result
-            
-            businesses = search_result.get('results', [])
-            total_results = search_result.get('total', 0)
-            api_cost = search_result.get('cost', 0)
-            
-            logger.info(f"  Página {page + 1}: {len(businesses)} resultados (total: {total_results})")
-            
-            if not businesses:
-                # No más resultados, completar
-                logger.info(f"  No hay más resultados, completando búsqueda")
-                break
-            
-            # Deduplicar por dominio
-            domains = [extract_domain(b.get('website', '')) for b in businesses]
-            domains = [d for d in domains if d]  # Filtrar vacíos
-            
-            existing = {}
-            if domains:
-                existing = self.staffkit.check_duplicates_batch(list_id, domains)
-            
-            # Insertar leads nuevos
-            page_leads = 0
-            page_dupes = 0
-            
-            for business in businesses:
-                domain = extract_domain(business.get('website', ''))
-                
-                # Skip si ya existe o no tiene website
-                if not domain:
-                    continue
-                if existing.get(domain, False):
-                    page_dupes += 1
-                    continue
-                
-                # Preparar lead
-                lead = {
-                    'company': business.get('title', ''),
-                    'website': business.get('website', ''),
-                    'phone': clean_phone(business.get('phone', '')),
-                    'city': location.split(',')[0].strip(),
-                    'country': country,
-                    'source': f'Geographic: {keyword}',
-                    'notes': f"Rating: {business.get('rating', 'N/A')} | Reviews: {business.get('reviews', 0)} | {business.get('category', '')}"
-                }
-                
-                # Guardar
-                save_result = self.staffkit.save_lead(list_id, lead)
-                if save_result.get('success'):
-                    if save_result.get('status') == 'duplicate':
-                        page_dupes += 1
-                    else:
-                        page_leads += 1
-                        # Marcar dominio como existente para evitar duplicados en misma página
-                        existing[domain] = True
-            
-            result['leads_added'] += page_leads
-            result['leads_duplicates'] += page_dupes
-            result['pages_processed'] += 1
-            
-            # Actualizar progreso
-            self.staffkit.update_search_progress(
-                search_id=search_id,
-                current_page=page + 1,
-                leads_added=page_leads,
-                leads_duplicates=page_dupes,
-                results_found=total_results,
-                api_cost=api_cost
-            )
-            
-            logger.info(f"  → {page_leads} leads nuevos, {page_dupes} duplicados")
-            
-            # Parar si ya no hay más resultados
-            if len(businesses) < results_per_page:
-                break
-            
-            # Esperar entre páginas
-            if page < max_pages - 1:
-                time.sleep(self.delay_between_pages)
+        leads_found = len(leads)
+        self.log(f"Encontrados {leads_found} negocios")
+        
+        # Añadir a StaffKit
+        leads_new = self.add_leads_to_staffkit(search, leads)
+        self.log(f"Nuevos leads añadidos: {leads_new}")
+        
+        # Actualizar stats
+        self.stats['leads_found'] += leads_found
+        self.stats['leads_new'] += leads_new
+        self.stats['searches_processed'] += 1
         
         # Marcar como completada
-        self.staffkit.complete_search(search_id, 'completed')
-        logger.info(f"✅ Búsqueda completada: {result['leads_added']} leads, {result['leads_duplicates']} duplicados")
+        # Estimar costo: $0.002 por búsqueda/página
+        estimated_cost = max_pages * 0.002
+        self.complete_search(search_id, leads_found, leads_new, estimated_cost)
         
-        return result
-    
-    def run(self, max_searches: int = None):
-        """
-        Ejecutar bot: procesar búsquedas de la cola
+        return True
         
-        Args:
-            max_searches: Máximo de búsquedas a procesar (None = infinito)
-        """
-        max_searches = max_searches or DEFAULT_SEARCHES_PER_RUN
-        
-        logger.info("=" * 60)
-        logger.info(f"Geographic Crawler Bot (ID: {self.bot_id})")
-        logger.info(f"Max búsquedas: {max_searches}")
-        logger.info(f"Delay entre búsquedas: {self.delay_between_searches}s")
-        logger.info("=" * 60)
+    def run(self):
+        """Ejecuta el bot procesando N búsquedas"""
+        self.log(f"Iniciando Geographic Bot #{self.bot_id}")
+        self.log(f"Búsquedas por ejecución: {self.searches_per_run}")
         
         searches_done = 0
-        queue_regenerated = False  # Solo regenerar una vez por ejecución
         
-        while searches_done < max_searches:
+        while searches_done < self.searches_per_run:
             # Obtener siguiente búsqueda
-            search = self.staffkit.get_next_search(self.bot_id)
+            search = self.get_next_search()
             
             if not search:
-                # Cola vacía - intentar regenerar si no lo hicimos ya
-                if not queue_regenerated:
-                    logger.info("Cola vacía - intentando regenerar...")
-                    bot_config = self.staffkit.get_bot_config(self.bot_id)
-                    if self.staffkit.regenerate_queue(self.bot_id, bot_config):
-                        queue_regenerated = True
-                        continue  # Reintentar obtener búsqueda
-                    else:
-                        logger.info("No se pudo regenerar la cola o ya está completa")
-                
-                logger.info("No hay más búsquedas pendientes")
+                self.log("No hay más búsquedas pendientes")
                 break
-            
+                
             # Procesar
-            result = self.process_search(search)
-            
-            if result['success']:
+            try:
+                self.process_search(search)
                 searches_done += 1
-                self.stats['searches_processed'] += 1
-                self.stats['total_leads'] += result['leads_added']
-                self.stats['total_duplicates'] += result['leads_duplicates']
-            
-            # Esperar entre búsquedas
-            if searches_done < max_searches:
-                logger.info(f"Esperando {self.delay_between_searches}s antes de siguiente búsqueda...")
+            except Exception as e:
+                self.log(f"Error procesando búsqueda: {e}", 'ERROR')
+                self.stats['errors'].append(str(e))
+                
+            # Delay entre búsquedas
+            if searches_done < self.searches_per_run:
+                self.debug(f"Esperando {self.delay_between_searches}s...")
                 time.sleep(self.delay_between_searches)
+                
+        # Resumen final
+        self.log("=" * 50)
+        self.log("RESUMEN DE EJECUCIÓN")
+        self.log(f"Búsquedas procesadas: {self.stats['searches_processed']}")
+        self.log(f"Leads encontrados: {self.stats['leads_found']}")
+        self.log(f"Leads nuevos: {self.stats['leads_new']}")
+        self.log(f"Costo API estimado: ${self.stats['api_cost']:.4f}")
+        if self.stats['errors']:
+            self.log(f"Errores: {len(self.stats['errors'])}")
+        self.log("=" * 50)
         
-        # Resumen - formato parseble por daemon
-        logger.info("=" * 60)
-        logger.info("RESUMEN")
-        logger.info(f"  Búsquedas procesadas: {self.stats['searches_processed']}")
-        logger.info(f"  Leads totales: {self.stats['total_leads']}")
-        logger.info(f"  Duplicados: {self.stats['total_duplicates']}")
-        logger.info("=" * 60)
-        
-        # Líneas con formato estándar para que el daemon las parsee
-        logger.info(f"STATS:leads_found:{self.stats['total_leads']}")
-        logger.info(f"STATS:leads_saved:{self.stats['total_leads']}")
-        logger.info(f"STATS:leads_duplicates:{self.stats['total_duplicates']}")
-        logger.info(f"STATS:searches_done:{self.stats['searches_processed']}")
-        
-        # Indicar si la cola quedó vacía
-        if self.stats['searches_processed'] == 0:
-            logger.info("STATS:queue_empty:true")
+        # CRITICAL: Output STATS lines for daemon parsing (MUST be at end, clean format)
+        # Daemon parses these with STATS:key:value pattern
+        print(f"STATS:leads_found:{self.stats['leads_found']}")
+        print(f"STATS:leads_saved:{self.stats['leads_new']}")
+        print(f"STATS:leads_duplicates:{self.stats['leads_found'] - self.stats['leads_new']}")
+        print(f"STATS:searches_done:{self.stats['searches_processed']}")
         
         return self.stats
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
-
 def main():
     parser = argparse.ArgumentParser(description='Geographic Crawler Bot')
-    parser.add_argument('--bot-id', type=int, required=True, help='ID del bot en StaffKit')
-    parser.add_argument('--api-key', required=True, help='StaffKit API Key')
-    parser.add_argument('--searches-per-run', type=int, default=DEFAULT_SEARCHES_PER_RUN,
-                        help=f'Búsquedas por ejecución (default: {DEFAULT_SEARCHES_PER_RUN})')
-    parser.add_argument('--dry-run', action='store_true', help='Solo mostrar, no ejecutar')
+    parser.add_argument('--bot-id', type=int, required=True, help='ID del bot')
+    parser.add_argument('--api-key', type=str, required=True, help='Token de API StaffKit')
+    parser.add_argument('--dataforseo-login', type=str, 
+                       default=os.getenv('DATAFORSEO_LOGIN', 'replanta@replanta.dev'),
+                       help='Login DataForSEO')
+    parser.add_argument('--dataforseo-password', type=str,
+                       default=os.getenv('DATAFORSEO_PASSWORD', 'e82d50d8f5b54b0b'),
+                       help='Password DataForSEO')
+    parser.add_argument('--searches-per-run', type=int, default=5, help='Búsquedas por ejecución')
+    parser.add_argument('--delay-searches', type=float, default=2.0, help='Delay entre búsquedas (segundos)')
+    parser.add_argument('--delay-pages', type=float, default=1.0, help='Delay entre páginas (segundos)')
+    parser.add_argument('--verbose', action='store_true', help='Modo verbose')
     
     args = parser.parse_args()
     
-    # Obtener configuración del bot
-    client = StaffKitClient(args.api_key)
-    config = client.get_bot_config(args.bot_id)
+    bot = GeographicBot(
+        bot_id=args.bot_id,
+        api_token=args.api_key,
+        dataforseo_login=args.dataforseo_login,
+        dataforseo_password=args.dataforseo_password,
+        searches_per_run=args.searches_per_run,
+        delay_between_searches=args.delay_searches,
+        delay_between_pages=args.delay_pages,
+        verbose=args.verbose
+    )
     
-    if not config:
-        logger.error(f"No se encontró configuración para bot {args.bot_id}")
-        sys.exit(1)
+    stats = bot.run()
     
-    logger.info(f"Bot: {config.get('name', 'Unknown')}")
-    
-    if args.dry_run:
-        logger.info("[DRY RUN] Solo mostraría búsquedas pendientes")
-        search = client.get_next_search(args.bot_id)
-        if search:
-            logger.info(f"Siguiente: '{search['keyword']}' en {search['location']}")
-        else:
-            logger.info("No hay búsquedas pendientes")
-        return
-    
-    # Ejecutar bot
-    bot = GeographicBot(args.bot_id, args.api_key, config)
-    stats = bot.run(max_searches=args.searches_per_run)
-    
-    # Exit code basado en resultados
-    if stats['searches_processed'] == 0:
-        sys.exit(0)  # No había trabajo, ok
-    else:
-        sys.exit(0)
+    # Exit code basado en errores
+    sys.exit(1 if stats['errors'] else 0)
 
 
 if __name__ == '__main__':
