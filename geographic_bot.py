@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Optional, Dict, List, Any
 
 # Configuración
-STAFFKIT_URL = os.getenv('STAFFKIT_URL', 'https://staffkit.replanta.io')
+STAFFKIT_URL = os.getenv('STAFFKIT_URL', 'https://staff.replanta.dev')
 
 class GeographicBot:
     def __init__(self, bot_id: int, api_token: str, 
