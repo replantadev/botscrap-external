@@ -120,6 +120,7 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
     user = config['user']
     password = config['password']
     branches = config.get('branches', [])
+    card_types = config.get('card_types', ['C'])  # Por defecto solo Customers
     corporate_only = config.get('corporate_only', True)
     include_with_web = config.get('include_with_web', False)
     limit = config.get('limit', 5000)
@@ -145,6 +146,15 @@ def extract_from_sap(config: dict, last_cardcode: str = '') -> list:
         
         # Construir query - Usa JOIN con _WEB_Clientes que tiene el Branch
         where_clauses = ["o.E_Mail IS NOT NULL", "o.E_Mail != ''"]
+        
+        # Filtrar por CardType (C=Customer, S=Supplier, L=Lead)
+        if card_types:
+            card_types_upper = [t.upper() for t in card_types]
+            if len(card_types_upper) == 1:
+                where_clauses.append(f"o.CardType = '{card_types_upper[0]}'")
+            else:
+                card_types_str = "', '".join(card_types_upper)
+                where_clauses.append(f"o.CardType IN ('{card_types_str}')")
         
         # Filtrar por Branch si se especifica (Branch está en _WEB_Clientes)
         if branches:
