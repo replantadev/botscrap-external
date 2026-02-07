@@ -153,9 +153,9 @@ class GeographicBot:
             self.debug(f"DataForSEO página {page + 1}/{max_pages} para '{keyword}' en {location}")
             
             # Construir payload
+            # Nota: Maps API no usa location_name, el keyword ya incluye la ubicación
             payload = [{
                 "keyword": f"{keyword} {location}",
-                "location_name": location,
                 "language_code": language_code,
                 "device": "desktop",
                 "os": "windows",
