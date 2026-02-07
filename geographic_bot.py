@@ -151,6 +151,7 @@ class GeographicBot:
         return result and result.get('success', False)
         
     def search_dataforseo_maps(self, keyword: str, location: str, country_code: str = 'AR',
+                                latitude: float = None, longitude: float = None,
                                 language_code: str = 'es', max_pages: int = 3) -> List[dict]:
         """
         Busca en DataForSEO Maps API
@@ -164,13 +165,17 @@ class GeographicBot:
         for page in range(max_pages):
             self.debug(f"DataForSEO página {page + 1}/{max_pages} para '{keyword}' en {location}")
             
-            # Construir payload con location_name para Maps API
-            country_name = COUNTRY_NAMES.get(country_code, country_code)
-            location_full = f"{location}, {country_name}"
+            # Construir payload con location_coordinate para Maps API
+            # Maps API requiere coordenadas, no nombres de lugar
+            if not latitude or not longitude:
+                self.log(f"ERROR: Sin coordenadas para '{location}'. Saltando búsqueda.", 'ERROR')
+                break
+            
+            location_coordinate = f"{latitude},{longitude}"
             
             payload = [{
                 "keyword": keyword,
-                "location_name": location_full,
+                "location_coordinate": location_coordinate,
                 "language_code": language_code,
                 "device": "desktop",
                 "os": "windows",
@@ -193,6 +198,9 @@ class GeographicBot:
                     break
                     
                 data = response.json()
+                
+                # DEBUG: Ver respuesta completa de DataForSEO
+                self.log(f"[DEBUG] Respuesta DataForSEO: {json.dumps(data, indent=2)[:500]}", 'INFO')
                 
                 # Contar costo
                 if 'cost' in data:
@@ -350,12 +358,16 @@ class GeographicBot:
         keyword = search['keyword']
         location = search['location']
         country_code = search.get('country', 'AR')
+        latitude = search.get('latitude')
+        longitude = search.get('longitude')
         max_pages = int(search.get('max_pages', 3))
         
         self.log(f"Procesando: '{keyword}' en {location}")
         
         # Buscar en DataForSEO
-        leads = self.search_dataforseo_maps(keyword, location, country_code, max_pages=max_pages)
+        leads = self.search_dataforseo_maps(keyword, location, country_code, 
+                                            latitude=latitude, longitude=longitude,
+                                            max_pages=max_pages)
         
         leads_found = len(leads)
         self.log(f"Encontrados {leads_found} negocios")
