@@ -16,6 +16,18 @@ from typing import Optional, Dict, List, Any
 # Configuración
 STAFFKIT_URL = os.getenv('STAFFKIT_URL', 'https://staff.replanta.dev')
 
+# Mapeo de códigos de país ISO a nombres completos para DataForSEO
+COUNTRY_NAMES = {
+    'AR': 'Argentina',
+    'MX': 'Mexico',
+    'ES': 'Spain',
+    'CO': 'Colombia',
+    'CL': 'Chile',
+    'PE': 'Peru',
+    'US': 'United States',
+    'BR': 'Brazil'
+}
+
 class GeographicBot:
     def __init__(self, bot_id: int, api_token: str, 
                  dataforseo_login: str = None, dataforseo_password: str = None,
@@ -138,7 +150,7 @@ class GeographicBot:
         })
         return result and result.get('success', False)
         
-    def search_dataforseo_maps(self, keyword: str, location: str, 
+    def search_dataforseo_maps(self, keyword: str, location: str, country_code: str = 'AR',
                                 language_code: str = 'es', max_pages: int = 3) -> List[dict]:
         """
         Busca en DataForSEO Maps API
@@ -152,10 +164,13 @@ class GeographicBot:
         for page in range(max_pages):
             self.debug(f"DataForSEO página {page + 1}/{max_pages} para '{keyword}' en {location}")
             
-            # Construir payload
-            # Nota: Maps API no usa location_name, el keyword ya incluye la ubicación
+            # Construir payload con location_name para Maps API
+            country_name = COUNTRY_NAMES.get(country_code, country_code)
+            location_full = f"{location}, {country_name}"
+            
             payload = [{
-                "keyword": f"{keyword} {location}",
+                "keyword": keyword,
+                "location_name": location_full,
                 "language_code": language_code,
                 "device": "desktop",
                 "os": "windows",
@@ -334,12 +349,13 @@ class GeographicBot:
         search_id = search['id']
         keyword = search['keyword']
         location = search['location']
+        country_code = search.get('country', 'AR')
         max_pages = int(search.get('max_pages', 3))
         
         self.log(f"Procesando: '{keyword}' en {location}")
         
         # Buscar en DataForSEO
-        leads = self.search_dataforseo_maps(keyword, location, max_pages=max_pages)
+        leads = self.search_dataforseo_maps(keyword, location, country_code, max_pages=max_pages)
         
         leads_found = len(leads)
         self.log(f"Encontrados {leads_found} negocios")
