@@ -18,18 +18,30 @@ STAFFKIT_URL = os.getenv('STAFFKIT_URL', 'https://staff.replanta.dev')
 
 class GeographicBot:
     def __init__(self, bot_id: int, api_token: str, 
-                 dataforseo_login: str, dataforseo_password: str,
+                 dataforseo_login: str = None, dataforseo_password: str = None,
                  searches_per_run: int = 5, delay_between_searches: float = 2.0,
                  delay_between_pages: float = 1.0, verbose: bool = False):
         
         self.bot_id = bot_id
         self.api_token = api_token
-        self.dataforseo_login = dataforseo_login
-        self.dataforseo_password = dataforseo_password
         self.searches_per_run = searches_per_run
         self.delay_between_searches = delay_between_searches
         self.delay_between_pages = delay_between_pages
         self.verbose = verbose
+        
+        # Obtener credenciales de DataForSEO desde integraciones si no se pasaron
+        if not dataforseo_login or not dataforseo_password:
+            credentials = self._get_dataforseo_credentials()
+            if credentials:
+                self.dataforseo_login = credentials.get('login', '')
+                self.dataforseo_password = credentials.get('password', '')
+            else:
+                # Fallback a valores pasados como argumentos si la API falla
+                self.dataforseo_login = dataforseo_login or ''
+                self.dataforseo_password = dataforseo_password or ''
+        else:
+            self.dataforseo_login = dataforseo_login
+            self.dataforseo_password = dataforseo_password
         
         # Stats de esta ejecución
         self.stats = {
@@ -39,6 +51,30 @@ class GeographicBot:
             'api_cost': 0.0,
             'errors': []
         }
+        
+    def _get_dataforseo_credentials(self) -> Optional[dict]:
+        """Obtiene credenciales de DataForSEO desde StaffKit Integraciones"""
+        url = f"{STAFFKIT_URL}/api/v2/integrations.php/dataforseo"
+        headers = {
+            'Authorization': f'Bearer {self.api_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('enabled') and data.get('login') and data.get('password'):
+                    self.log(f"Credenciales DataForSEO obtenidas desde Integraciones", 'INFO')
+                    return data
+                else:
+                    self.log(f"DataForSEO no configurado en Integraciones", 'WARNING')
+            else:
+                self.log(f"No se pudieron obtener credenciales de Integraciones (HTTP {response.status_code})", 'WARNING')
+        except Exception as e:
+            self.log(f"Error obteniendo credenciales de Integraciones: {e}", 'WARNING')
+        
+        return None
         
     def log(self, msg: str, level: str = 'INFO'):
         """Log con timestamp"""
@@ -375,11 +411,11 @@ def main():
     parser.add_argument('--bot-id', type=int, required=True, help='ID del bot')
     parser.add_argument('--api-key', type=str, required=True, help='Token de API StaffKit')
     parser.add_argument('--dataforseo-login', type=str, 
-                       default=os.getenv('DATAFORSEO_LOGIN', 'replanta@replanta.dev'),
-                       help='Login DataForSEO')
+                       default=None,
+                       help='Login DataForSEO (opcional, se obtiene de Integraciones si no se especifica)')
     parser.add_argument('--dataforseo-password', type=str,
-                       default=os.getenv('DATAFORSEO_PASSWORD', 'e82d50d8f5b54b0b'),
-                       help='Password DataForSEO')
+                       default=None,
+                       help='Password DataForSEO (opcional, se obtiene de Integraciones si no se especifica)')
     parser.add_argument('--searches-per-run', type=int, default=5, help='Búsquedas por ejecución')
     parser.add_argument('--delay-searches', type=float, default=2.0, help='Delay entre búsquedas (segundos)')
     parser.add_argument('--delay-pages', type=float, default=1.0, help='Delay entre páginas (segundos)')
