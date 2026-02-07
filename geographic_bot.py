@@ -135,7 +135,7 @@ class GeographicBot:
                 )
                 
                 if response.status_code != 200:
-                    self.log(f"DataForSEO error {response.status_code}", 'ERROR')
+                    self.log(f"DataForSEO HTTP error {response.status_code}: {response.text[:200]}", 'ERROR')
                     break
                     
                 data = response.json()
@@ -147,20 +147,23 @@ class GeographicBot:
                 # Extraer resultados
                 tasks = data.get('tasks', [])
                 if not tasks:
+                    self.log(f"DataForSEO: No tasks in response for '{keyword}' in {location}", 'WARNING')
                     break
                     
                 task = tasks[0]
-                if task.get('status_code') != 20000:
-                    self.log(f"DataForSEO task error: {task.get('status_message')}", 'ERROR')
+                status_code = task.get('status_code')
+                if status_code != 20000:
+                    self.log(f"DataForSEO task error ({status_code}): {task.get('status_message')}", 'ERROR')
                     break
                     
                 results = task.get('result', [])
                 if not results:
+                    self.log(f"DataForSEO: Empty results for '{keyword}' in {location}", 'WARNING')
                     break
                     
                 items = results[0].get('items', [])
                 if not items:
-                    self.debug(f"No más resultados en página {page + 1}")
+                    self.log(f"DataForSEO: No items found for '{keyword}' in {location} (page {page + 1})", 'INFO')
                     break
                     
                 # Procesar items
