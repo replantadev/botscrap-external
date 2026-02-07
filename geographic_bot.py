@@ -162,6 +162,9 @@ class GeographicBot:
                 "depth": 20  # resultados por página
             }]
             
+            # DEBUG: Ver payload real enviado
+            self.log(f"[DEBUG] Payload enviado: {json.dumps(payload, indent=2)}", 'INFO')
+            
             try:
                 response = requests.post(
                     url,
