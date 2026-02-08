@@ -247,6 +247,103 @@ class GeographicBot:
                 break
                 
         return all_results
+    
+    def _is_b2b_business(self, category: str, company_name: str) -> bool:
+        """
+        Filtra solo negocios B2B con alta probabilidad de tener email corporativo.
+        Reduce desperdicios en Hunter.io y mejora ROI de DataForSEO.
+        """
+        # Keywords de negocios B2B (servicios profesionales y empresariales)
+        B2B_KEYWORDS = [
+            # Servicios profesionales
+            'abogad', 'lawyer', 'law firm', 'legal', 'jurídic',
+            'contador', 'contabl', 'accountant', 'accounting', 'audit',
+            'consultor', 'consultant', 'consulting', 'asesor',
+            'arquitect', 'architect',
+            'ingenier', 'engineer', 'engineering',
+            'notari', 'notary',
+            
+            # Tecnología y software
+            'software', 'desarrollo', 'development', 'programación', 'programming',
+            'agencia digital', 'digital agency', 'marketing agency', 'publicidad',
+            'diseño web', 'web design', 'diseño gráfico',
+            'sistemas', 'system', 'IT services', 'tecnología',
+            
+            # Servicios empresariales
+            'recursos humanos', 'HR', 'rrhh', 'recruitment', 'reclutamiento',
+            'capacitación', 'training', 'formación',
+            'logística', 'logistics', 'supply chain',
+            'seguridad empresarial', 'security services',
+            'limpieza industrial', 'industrial cleaning',
+            'gestoría', 'gestión', 'administración',
+            
+            # Industria, manufactura y construcción
+            'fabricación', 'manufactur', 'industrial', 'fábrica',
+            'distribuid', 'distributor', 'mayorista', 'wholesale',
+            'importador', 'import', 'export', 'comercio exterior',
+            'construcción', 'construction', 'obra', 'contractor',
+            'inmobiliaria', 'real estate', 'bienes raíces',
+            
+            # Salud empresarial
+            'clínica', 'clinic', 'laboratorio', 'laborator',
+            'salud ocupacional', 'medicina laboral',
+            
+            # Educación institucional
+            'instituto', 'academy', 'escuela de negocios', 'business school',
+            'centro de formación', 'capacitación empresarial'
+        ]
+        
+        # Keywords de negocios B2C a EXCLUIR (sin emails corporativos típicamente)
+        EXCLUDE_KEYWORDS = [
+            # Alimentación
+            'restaurant', 'restorán', 'bar', 'café', 'cafetería',
+            'parrilla', 'pizzería', 'heladería', 'pastelería',
+            'comida rápida', 'fast food', 'delivery',
+            
+            # Servicios personales
+            'peluquería', 'barbería', 'barber', 'hair salon', 'beauty salon',
+            'spa', 'masajes', 'estética', 'belleza',
+            'manicura', 'nail salon', 'salón de belleza',
+            
+            # Comercio minorista
+            'florería', 'florist', 'flowers',
+            'kiosco', 'almacén', 'minimarket', 'tienda de barrio',
+            'bazar', 'librería', 'juguetería',
+            'boutique', 'ropa', 'clothing', 'zapatería',
+            
+            # Servicios automotriz minorista
+            'taller mecánico', 'car repair', 'gomería', 'tire shop',
+            'lavadero', 'car wash', 'lubricentro',
+            
+            # Otros B2C
+            'lavandería', 'laundry', 'dry cleaning', 'tintorería',
+            'gimnasio', 'gym', 'fitness', 'crossfit',
+            'veterinaria', 'pet shop', 'mascotas',
+            'farmacia', 'pharmacy', 'perfumería',
+            'óptica', 'optic',
+            'cerrajería', 'locksmith',
+            'fotografía', 'photo studio'
+        ]
+        
+        # Normalizar texto
+        text = f"{category} {company_name}".lower()
+        
+        # PRIMERO: Excluir B2C explícitos (tienen prioridad)
+        for keyword in EXCLUDE_KEYWORDS:
+            if keyword.lower() in text:
+                self.debug(f"❌ Filtered B2C: {company_name} ({category}) - Keyword: {keyword}")
+                return False
+        
+        # SEGUNDO: Incluir solo si matchea B2B
+        for keyword in B2B_KEYWORDS:
+            if keyword.lower() in text:
+                self.debug(f"✅ Accepted B2B: {company_name} ({category}) - Keyword: {keyword}")
+                return True
+        
+        # Por defecto RECHAZAR si no matchea ningún keyword B2B
+        # (Conservador: preferimos perder algunos B2B que capturar muchos B2C inútiles)
+        self.debug(f"⚠️ Filtered UNKNOWN: {company_name} ({category}) - No B2B keyword match")
+        return False
         
     def _parse_maps_result(self, item: dict) -> Optional[dict]:
         """Parsea un resultado de Maps a formato de lead"""
@@ -255,6 +352,12 @@ class GeographicBot:
             title = item.get('title', '')
             if not title:
                 return None
+            
+            category = item.get('category', '')
+            
+            # FILTRO B2B: Rechazar negocios B2C sin email corporativo típico
+            if not self._is_b2b_business(category, title):
+                return None  # No agregar este lead a la lista
                 
             address_info = item.get('address_info', {}) or {}
             
@@ -267,7 +370,7 @@ class GeographicBot:
                 'region': address_info.get('region', ''),
                 'country': address_info.get('country_code', ''),
                 'postal_code': address_info.get('zip', ''),
-                'category': item.get('category', ''),
+                'category': category,
                 'rating': item.get('rating', {}).get('value') if item.get('rating') else None,
                 'reviews_count': item.get('rating', {}).get('votes_count') if item.get('rating') else None,
                 'latitude': item.get('latitude'),
