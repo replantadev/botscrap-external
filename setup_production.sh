@@ -21,7 +21,17 @@ NC='\033[0m' # No Color
 INSTALL_DIR="/var/www/vhosts/territoriodrasanvicr.com/b"
 SERVICE_FILE="botscrap-daemon.service"
 LOGROTATE_FILE="logrotate-botscrap.conf"
-USER="replanta"
+
+# Auto-detect user from directory ownership
+DETECTED_USER=$(stat -c '%U' "$INSTALL_DIR" 2>/dev/null || stat -f '%Su' "$INSTALL_DIR" 2>/dev/null || echo "root")
+echo "Usuario detectado: $DETECTED_USER"
+read -p "¿Usar este usuario para el servicio? [Y/n]: " USE_DETECTED
+if [[ "$USE_DETECTED" =~ ^[Nn]$ ]]; then
+    read -p "Ingresa el usuario correcto: " USER
+else
+    USER="$DETECTED_USER"
+fi
+echo "Usando usuario: $USER"
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
@@ -60,14 +70,20 @@ echo -e "${GREEN}   ✓ Daemon detenido${NC}"
 
 echo ""
 echo -e "${YELLOW}3. Instalando systemd service...${NC}"
-cp "$SERVICE_FILE" /etc/systemd/system/
-chmod 644 /etc/systemd/system/"$SERVICE_FILE"
+# Update service file with detected user
+sed "s/User=replanta/User=$USER/g; s/Group=replanta/Group=$USER/g" "$SERVICE_FILE" > /tmp/botscrap-daemon.service
+cp /tmp/botscrap-daemon.service /etc/systemd/system/botscrap-daemon.service
+chmod 644 /etc/systemd/system/botscrap-daemon.service
+rm /tmp/botscrap-daemon.service
 systemctl daemon-reload
-echo -e "${GREEN}   ✓ Service instalado${NC}"
+echo -e "${GREEN}   ✓ Service instalado (usuario: $USER)${NC}"
 
-echo ""
-echo -e "${YELLOW}4. Configurando logrotate...${NC}"
-if [ -f "$LOGROTATE_FILE" ]; then
+echo# Update logrotate config with detected user
+    sed "s/replanta replanta/$USER $USER/g" "$LOGROTATE_FILE" > /tmp/logrotate-botscrap.conf
+    cp /tmp/logrotate-botscrap.conf /etc/logrotate.d/botscrap
+    chmod 644 /etc/logrotate.d/botscrap
+    rm /tmp/logrotate-botscrap.conf
+    echo -e "${GREEN}   ✓ Logrotate configurado (usuario: $USER)
     cp "$LOGROTATE_FILE" /etc/logrotate.d/botscrap
     chmod 644 /etc/logrotate.d/botscrap
     echo -e "${GREEN}   ✓ Logrotate configurado${NC}"
