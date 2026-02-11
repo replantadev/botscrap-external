@@ -213,36 +213,47 @@ class StaffKitClient:
         if not normalized_map:
             return {d: False for d in domains}
         
+        # Chunkar en lotes de 100 (límite del API)
+        BATCH_SIZE = 100
+        all_normalized = list(normalized_map.keys())
+        all_results = {}
+        total_duplicates = 0
+        total_new = 0
+        
         try:
-            response = requests.post(
-                f"{self.api_url}/api/v2/check-duplicate",
-                json={'domains': list(normalized_map.keys())},
-                headers=self._headers(),
-                timeout=10
-            )
+            for i in range(0, len(all_normalized), BATCH_SIZE):
+                chunk = all_normalized[i:i + BATCH_SIZE]
+                
+                response = requests.post(
+                    f"{self.api_url}/api/v2/check-duplicate",
+                    json={'domains': chunk},
+                    headers=self._headers(),
+                    timeout=15
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    chunk_results = data.get('results', {})
+                    all_results.update(chunk_results)
+                    
+                    total_duplicates += data.get('duplicates_count', 0)
+                    total_new += data.get('new_count', 0)
+                else:
+                    logger.warning(f"StaffKit batch API error: {response.status_code} (chunk {i//BATCH_SIZE + 1})")
             
-            if response.status_code == 200:
-                data = response.json()
-                results = data.get('results', {})
-                
-                duplicates = data.get('duplicates_count', 0)
-                new_count = data.get('new_count', 0)
-                logger.info(f"📊 StaffKit check: {duplicates} duplicates, {new_count} new")
-                
-                # Mapear resultados de vuelta a dominios originales
-                output = {}
-                for original, normalized in original_to_normalized.items():
-                    output[original] = results.get(normalized, {}).get('exists', False)
-                
-                # Incluir dominios que no se pudieron normalizar
-                for domain in domains:
-                    if domain not in output:
-                        output[domain] = False
-                
-                return output
-            else:
-                logger.warning(f"StaffKit batch API error: {response.status_code}")
-                return {d: False for d in domains}
+            logger.info(f"📊 StaffKit check: {total_duplicates} duplicates, {total_new} new ({len(all_normalized)} domains in {(len(all_normalized)-1)//BATCH_SIZE + 1} batches)")
+            
+            # Mapear resultados de vuelta a dominios originales
+            output = {}
+            for original, normalized in original_to_normalized.items():
+                output[original] = all_results.get(normalized, {}).get('exists', False)
+            
+            # Incluir dominios que no se pudieron normalizar
+            for domain in domains:
+                if domain not in output:
+                    output[domain] = False
+            
+            return output
                 
         except Exception as e:
             logger.warning(f"StaffKit batch check failed: {e}")
