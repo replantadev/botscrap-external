@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Geographic Crawler Bot v3.0 - El bot geográfico más efectivo
-Usa DataForSEO Maps API + Email Scraping paralelo + Hunter.io fallback
+Usa DataForSEO Maps API + Email Scraping paralelo + Apollo.io Org Enrichment
 
 Mejoras v3.0:
 - Scraping paralelo (ThreadPool) - 5x más rápido
@@ -100,12 +100,12 @@ class GeographicBot:
             self.dataforseo_login = dataforseo_login
             self.dataforseo_password = dataforseo_password
         
-        # Obtener Hunter.io API key desde integraciones
-        self.hunter_key = self._get_hunter_key()
-        if self.hunter_key:
-            self.log(f"✓ Hunter.io configurado (key: {self.hunter_key[:8]}...)", 'INFO')
+        # Obtener Apollo.io API key desde integraciones (reemplaza Hunter, mejor LATAM)
+        self.apollo_key = self._get_apollo_key()
+        if self.apollo_key:
+            self.log(f"✓ Apollo.io configurado (key: {self.apollo_key[:8]}...)", 'INFO')
         else:
-            self.log("⚠️ Hunter.io NO configurado - solo scraping", 'WARNING')
+            self.log("⚠️ Apollo.io NO configurado - solo scraping", 'WARNING')
         
         # Session con timeouts razonables para scraping
         self.session = requests.Session()
@@ -126,7 +126,7 @@ class GeographicBot:
             'leads_with_email': 0,
             'emails_from_maps': 0,  # Nuevo: emails de DataForSEO
             'emails_scraped': 0,
-            'emails_hunter': 0,
+            'phones_apollo': 0,
             'domains_skipped': 0,
             'api_cost': 0.0,
             'errors': []
@@ -166,9 +166,9 @@ class GeographicBot:
         
         return None
     
-    def _get_hunter_key(self) -> Optional[str]:
-        """Obtiene API key de Hunter.io desde StaffKit Integraciones"""
-        url = f"{STAFFKIT_URL}/api/v2/integrations.php/hunter"
+    def _get_apollo_key(self) -> Optional[str]:
+        """Obtiene API key de Apollo.io desde StaffKit Integraciones"""
+        url = f"{STAFFKIT_URL}/api/v2/integrations.php/apollo"
         headers = {
             'Authorization': f'Bearer {self.api_token}',
             'Content-Type': 'application/json'
@@ -181,7 +181,7 @@ class GeographicBot:
                 if data.get('enabled') and data.get('api_key'):
                     return data.get('api_key')
         except Exception as e:
-            self.debug(f"Error obteniendo Hunter key: {e}")
+            self.debug(f"Error obteniendo Apollo key: {e}")
         
         return None
         
@@ -502,16 +502,16 @@ class GeographicBot:
                 # Marcar dominio como fallido para no reintentar
                 if domain:
                     self.failed_domains.add(domain)
-                
-                # 2. Hunter.io fallback
-                if self.hunter_key:
-                    email, source = self._hunter_search(website)
-                    if email:
-                        lead['email'] = email
-                        lead['email_source'] = source
-                        self.stats['emails_hunter'] += 1
-                        self.stats['leads_with_email'] += 1
-                        self.log(f"    ✓ Hunter: {email}", 'INFO')
+            
+            # 2. Apollo.io Org Enrichment - obtener teléfono (gratis)
+            if self.apollo_key and website and not lead.get('phone'):
+                phone, apollo_data = self._apollo_org_enrich(website)
+                if phone:
+                    lead['phone'] = phone
+                    self.stats['phones_apollo'] += 1
+                    self.log(f"    ✓ Apollo phone: {phone}", 'INFO')
+                if apollo_data.get('linkedin_url') and not lead.get('linkedin_url'):
+                    lead['linkedin_url'] = apollo_data['linkedin_url']
         
         # Ejecutar en paralelo
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -722,27 +722,43 @@ class GeographicBot:
         
         return False
     
-    def _hunter_search(self, website: str) -> Tuple[str, str]:
-        """Buscar email con Hunter.io API"""
+    def _apollo_org_enrich(self, website: str) -> Tuple[str, dict]:
+        """Enriquecer organización con Apollo.io (gratis) - obtiene teléfono, LinkedIn, etc."""
         domain = self._extract_domain(website)
-        if not domain or not self.hunter_key:
-            return '', 'none'
+        if not domain or not self.apollo_key:
+            return '', {}
         
         try:
-            url = f"https://api.hunter.io/v2/domain-search?domain={domain}&api_key={self.hunter_key}"
-            response = self.session.get(url, timeout=(5, 15))
+            url = f"https://api.apollo.io/v1/organizations/enrich?domain={domain}"
+            headers = {
+                'Content-Type': 'application/json',
+                'x-api-key': self.apollo_key
+            }
+            
+            response = self.session.get(url, headers=headers, timeout=(5, 15), verify=False)
             data = response.json()
             
-            if data.get('data', {}).get('emails'):
-                for item in data['data']['emails']:
-                    email = item.get('value', '').lower()
-                    if email and self._is_valid_email(email):
-                        return email, 'hunter'
+            org = data.get('organization', {})
+            
+            if not org or not org.get('name'):
+                return '', {}
+            
+            result = {
+                'name': org.get('name'),
+                'phone': org.get('phone', ''),
+                'linkedin_url': org.get('linkedin_url', ''),
+                'industry': org.get('industry', ''),
+                'city': org.get('city', ''),
+                'country': org.get('country', ''),
+                'facebook_url': org.get('facebook_url', ''),
+            }
+            
+            return result.get('phone', ''), result
                         
         except Exception as e:
-            self.debug(f"Hunter error: {e}")
+            self.debug(f"Apollo org enrich error: {e}")
         
-        return '', 'none'
+        return '', {}
         
     def _add_lead(self, lead_data: dict) -> Optional[dict]:
         """Añade un lead individual a StaffKit"""
@@ -845,7 +861,7 @@ class GeographicBot:
         self.log(f"📧 Leads con email: {self.stats['leads_with_email']}")
         self.log(f"   - Emails de Maps: {self.stats['emails_from_maps']}")
         self.log(f"   - Emails scrapeados: {self.stats['emails_scraped']}")
-        self.log(f"   - Emails Hunter.io: {self.stats['emails_hunter']}")
+        self.log(f"📞 Phones Apollo: {self.stats['phones_apollo']}")
         self.log(f"🚀 Dominios skipped: {self.stats['domains_skipped']}")
         self.log(f"💰 Costo API estimado: ${self.stats['api_cost']:.4f}")
         if self.stats['errors']:
@@ -860,7 +876,7 @@ class GeographicBot:
         print(f"STATS:leads_with_email:{self.stats['leads_with_email']}")
         print(f"STATS:emails_from_maps:{self.stats['emails_from_maps']}")
         print(f"STATS:emails_scraped:{self.stats['emails_scraped']}")
-        print(f"STATS:emails_hunter:{self.stats['emails_hunter']}")
+        print(f"STATS:phones_apollo:{self.stats['phones_apollo']}")
         print(f"STATS:domains_skipped:{self.stats['domains_skipped']}")
         print(f"STATS:searches_done:{self.stats['searches_processed']}")
         

@@ -45,9 +45,9 @@ IGNORE_EMAILS = [
 class EmailEnricher:
     """Enriquecedor de emails para leads"""
     
-    def __init__(self, session: requests.Session = None, hunter_key: str = None):
+    def __init__(self, session: requests.Session = None, apollo_key: str = None):
         self.session = session or self._create_session()
-        self.hunter_key = hunter_key or os.getenv('HUNTER_KEY', '')
+        self.apollo_key = apollo_key or os.getenv('APOLLO_KEY', '')
         self.timeout = (5, 10)
     
     def _create_session(self) -> requests.Session:
@@ -89,17 +89,18 @@ class EmailEnricher:
         pattern_emails = self._generate_pattern_emails(domain)
         all_emails.extend(pattern_emails)
         
-        # 4. Hunter.io (si hay API key y pocos emails encontrados)
-        if self.hunter_key and len([e for e in all_emails if e['fuente'] != 'pattern']) < 2:
-            hunter_emails = self._hunter_search(domain)
-            all_emails.extend(hunter_emails)
+        # 4. Apollo.io Org Enrichment (si hay API key - obtener teléfono)
+        phone = ''
+        apollo_data = {}
+        if self.apollo_key:
+            phone, apollo_data = self._apollo_org_enrich(domain)
         
         # 5. Deduplicar y priorizar
         unique_emails = self._deduplicate_emails(all_emails)
         prioritized = self._prioritize_emails(unique_emails)
         
-        # 6. Construir resultado
-        return self._build_result(prioritized)
+        # 6. Construir resultado (incluye phone de Apollo)
+        return self._build_result(prioritized, phone=phone, apollo_data=apollo_data)
     
     def _extract_domain(self, website: str) -> str:
         """Extraer dominio de URL"""
@@ -181,37 +182,42 @@ class EmailEnricher:
         
         return emails
     
-    def _hunter_search(self, domain: str) -> List[Dict]:
-        """Buscar emails con Hunter.io API"""
-        emails = []
-        
-        if not self.hunter_key:
-            return emails
+    def _apollo_org_enrich(self, domain: str) -> Tuple[str, dict]:
+        """Enriquecer organización con Apollo.io (gratis) - obtiene teléfono, LinkedIn, etc."""
+        if not domain or not self.apollo_key:
+            return '', {}
         
         try:
-            url = f"https://api.hunter.io/v2/domain-search?domain={domain}&api_key={self.hunter_key}"
-            response = self.session.get(url, timeout=self.timeout)
+            url = f"https://api.apollo.io/v1/organizations/enrich?domain={domain}"
+            headers = {
+                'Content-Type': 'application/json',
+                'x-api-key': self.apollo_key
+            }
+            
+            response = self.session.get(url, headers=headers, timeout=self.timeout, verify=False)
             data = response.json()
             
-            if data.get('data', {}).get('emails'):
-                for item in data['data']['emails'][:5]:
-                    email = item.get('value', '')
-                    if email and self._is_valid_email(email):
-                        tipo = 'personal' if item.get('first_name') else self._classify_email(email)
-                        emails.append({
-                            'email': email.lower(),
-                            'tipo': tipo,
-                            'prioridad': EMAIL_PRIORITY.get(tipo, 7),
-                            'fuente': 'hunter',
-                            'verificado': item.get('verification', {}).get('status') == 'valid',
-                            'nombre': f"{item.get('first_name', '')} {item.get('last_name', '')}".strip(),
-                            'cargo': item.get('position', '')
-                        })
+            org = data.get('organization', {})
+            
+            if not org or not org.get('name'):
+                return '', {}
+            
+            result = {
+                'name': org.get('name'),
+                'phone': org.get('phone', ''),
+                'linkedin_url': org.get('linkedin_url', ''),
+                'industry': org.get('industry', ''),
+                'city': org.get('city', ''),
+                'country': org.get('country', ''),
+                'facebook_url': org.get('facebook_url', ''),
+            }
+            
+            return result.get('phone', ''), result
                         
         except Exception as e:
-            logger.debug(f"Hunter API error: {e}")
+            logger.debug(f"Apollo org enrich error: {e}")
         
-        return emails
+        return '', {}
     
     def _extract_emails_from_html(self, html: str) -> List[str]:
         """Extraer emails de HTML"""
@@ -293,30 +299,44 @@ class EmailEnricher:
         
         return sorted(emails, key=sort_key)
     
-    def _build_result(self, prioritized_emails: List[Dict]) -> Dict:
+    def _build_result(self, prioritized_emails: List[Dict], phone: str = '', apollo_data: dict = None) -> Dict:
         """Construir resultado final"""
-        if not prioritized_emails:
+        if not prioritized_emails and not phone:
             return self._empty_result()
         
-        principal = prioritized_emails[0]
-        adicionales = [e['email'] for e in prioritized_emails[1:5]]
-        
-        # Calcular confianza
-        confianza = 50
-        if principal.get('verificado'):
-            confianza += 30
-        if principal['fuente'] != 'pattern':
-            confianza += 15
-        if principal['tipo'] == 'personal':
-            confianza += 5
-        
-        return {
-            'email_principal': principal['email'],
-            'emails_adicionales': adicionales,
-            'email_tipo': principal['tipo'],
-            'confianza': min(confianza, 100),
-            'todos_emails': prioritized_emails
-        }
+        if prioritized_emails:
+            principal = prioritized_emails[0]
+            adicionales = [e['email'] for e in prioritized_emails[1:5]]
+            
+            # Calcular confianza
+            confianza = 50
+            if principal.get('verificado'):
+                confianza += 30
+            if principal['fuente'] != 'pattern':
+                confianza += 15
+            if principal['tipo'] == 'personal':
+                confianza += 5
+            
+            return {
+                'email_principal': principal['email'],
+                'emails_adicionales': adicionales,
+                'email_tipo': principal['tipo'],
+                'confianza': min(confianza, 100),
+                'todos_emails': prioritized_emails,
+                'phone': phone,
+                'apollo_data': apollo_data or {}
+            }
+        else:
+            # Solo tenemos datos de Apollo (teléfono) sin emails
+            return {
+                'email_principal': '',
+                'emails_adicionales': [],
+                'email_tipo': 'unknown',
+                'confianza': 0,
+                'todos_emails': [],
+                'phone': phone,
+                'apollo_data': apollo_data or {}
+            }
     
     def _empty_result(self) -> Dict:
         """Resultado vacío"""
@@ -325,7 +345,9 @@ class EmailEnricher:
             'emails_adicionales': [],
             'email_tipo': 'unknown',
             'confianza': 0,
-            'todos_emails': []
+            'todos_emails': [],
+            'phone': '',
+            'apollo_data': {}
         }
 
 
