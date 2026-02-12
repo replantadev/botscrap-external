@@ -125,7 +125,7 @@ class LeadValidator:
             'api_calls_places': self.api_calls.get('places_details', 0),
             'api_calls_pagespeed': self.api_calls.get('pagespeed', 0),
             'api_calls_custom_search': self.api_calls.get('custom_search', 0),
-            'api_calls_hunter': self.api_calls.get('hunter', 0),
+            'api_calls_apollo': self.api_calls.get('apollo', 0),
             'estimated_cost_usd': self.get_estimated_cost()
         }
     
