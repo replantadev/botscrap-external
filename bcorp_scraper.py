@@ -763,11 +763,39 @@ def main():
     if countries_str:
         countries = [c.strip() for c in countries_str.split(',') if c.strip()]
     
-    # Intentar obtener Google keys de config si no se pasaron
+    # Intentar obtener Google keys — múltiples fuentes en cascada
     google_key = args.google_api_key
     google_cx = args.google_cx
     
     if not google_key or not google_cx:
+        # 1. Variables de entorno (como los demás bots)
+        google_key = google_key or os.getenv('GOOGLE_API_KEY', '')
+        google_cx = google_cx or os.getenv('CX_ID', '')
+        if google_key:
+            print(f"[INFO] Google keys loaded from environment")
+    
+    if not google_key or not google_cx:
+        # 2. Archivo .env en CWD (dotenv manual, sin dependencia)
+        env_path = os.path.join(os.getcwd(), '.env')
+        if os.path.exists(env_path):
+            try:
+                with open(env_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            k, v = line.split('=', 1)
+                            k, v = k.strip(), v.strip()
+                            if k == 'GOOGLE_API_KEY' and not google_key:
+                                google_key = v
+                            elif k == 'CX_ID' and not google_cx:
+                                google_cx = v
+                if google_key:
+                    print(f"[INFO] Google keys loaded from {env_path}")
+            except Exception:
+                pass
+    
+    if not google_key or not google_cx:
+        # 3. config.json de StaffKit
         config_paths = [
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'config.json'),
             '/home/replanta/staff.replanta.dev/data/config.json',
@@ -784,6 +812,26 @@ def main():
                         break
                 except Exception:
                     pass
+    
+    if not google_key or not google_cx:
+        # 4. Obtener del config global de StaffKit vía API
+        try:
+            resp = requests.get(
+                f"{STAFFKIT_URL}/api/v2/external-bot",
+                params={'action': 'get_config'},
+                headers={'Authorization': f'Bearer {args.api_key}'},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get('success'):
+                    cfg = data.get('config', {})
+                    google_key = google_key or cfg.get('google_api_key', '')
+                    google_cx = google_cx or cfg.get('google_cx', '')
+                    if google_key:
+                        print(f"[INFO] Google keys loaded from StaffKit API")
+        except Exception:
+            pass
     
     scraper = BCorpScraper(
         api_key=args.api_key,
