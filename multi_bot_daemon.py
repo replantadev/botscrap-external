@@ -386,7 +386,7 @@ class MultiBotDaemon:
         
         # Calcular cuántos leads buscar en esta ejecución
         # Bots SAP y Geographic son extractores/crawlers, no tienen límite tradicional
-        if bot_type in ('sap', 'sap_sl', 'geographic'):
+        if bot_type in ('sap', 'sap_sl', 'geographic', 'bcorp'):
             leads_per_run = 0  # No usa este parámetro, tiene su propia lógica
         else:
             remaining = max_leads - leads_today
@@ -410,7 +410,8 @@ class MultiBotDaemon:
             'autonomous': 'autonomous',
             'sap': 'sap',
             'sap_sl': 'sap_sl',  # SAP Service Layer (REST API)
-            'geographic': 'geographic'
+            'geographic': 'geographic',
+            'bcorp': 'bcorp'
         }
         # Normalizar bot_type (strip espacios, lowercase)
         bot_type_clean = (bot_type or 'direct').strip().lower()
@@ -517,8 +518,27 @@ class MultiBotDaemon:
                 '--searches-per-run', str(searches_per_run)
             ]
         
+        elif subcommand == 'bcorp':
+            # Bot B Corp Directory Scraper
+            bcorp_countries = bot.get('config_bcorp_countries', '') or ''
+            bcorp_max = int(bot.get('config_bcorp_max_per_country', 100) or 100)
+            bcorp_delay = float(bot.get('config_bcorp_delay', 2) or 2)
+            
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'bcorp_scraper.py',
+                '--bot-id', str(bot_id),
+                '--api-key', self.api_key,
+                '--max-per-country', str(bcorp_max),
+                '--delay', str(bcorp_delay)
+            ]
+            if bcorp_countries:
+                cmd.extend(['--countries', bcorp_countries])
+            if target_list_id:
+                cmd.extend(['--list-id', str(target_list_id)])
+        
         # Solo añadir list-id si no es SAP ni Geographic (obtienen de su config)
-        if target_list_id and subcommand not in ('sap', 'sap_sl', 'geographic'):
+        if target_list_id and subcommand not in ('sap', 'sap_sl', 'geographic', 'bcorp'):
             cmd.extend(['--list-id', str(target_list_id)])
         
         # Validar que se creó un comando
