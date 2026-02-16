@@ -386,7 +386,7 @@ class MultiBotDaemon:
         
         # Calcular cuántos leads buscar en esta ejecución
         # Bots SAP y Geographic son extractores/crawlers, no tienen límite tradicional
-        if bot_type in ('sap', 'sap_sl', 'geographic', 'bcorp'):
+        if bot_type in ('sap', 'sap_sl', 'geographic', 'bcorp', 'sniper'):
             leads_per_run = 0  # No usa este parámetro, tiene su propia lógica
         else:
             remaining = max_leads - leads_today
@@ -411,7 +411,8 @@ class MultiBotDaemon:
             'sap': 'sap',
             'sap_sl': 'sap_sl',  # SAP Service Layer (REST API)
             'geographic': 'geographic',
-            'bcorp': 'bcorp'
+            'bcorp': 'bcorp',
+            'sniper': 'sniper'
         }
         # Normalizar bot_type (strip espacios, lowercase)
         bot_type_clean = (bot_type or 'direct').strip().lower()
@@ -537,8 +538,31 @@ class MultiBotDaemon:
             if target_list_id:
                 cmd.extend(['--list-id', str(target_list_id)])
         
+        elif subcommand == 'sniper':
+            # Bot Hosting Sniper - busca webs WordPress lentas en hosting malo
+            sniper_niches = bot.get('config_sniper_niches', '') or ''
+            sniper_country = bot.get('config_sniper_country', 'ES') or 'ES'
+            sniper_max_cities = int(bot.get('config_sniper_max_cities', 50) or 50)
+            sniper_searches = int(bot.get('config_sniper_searches_per_run', 10) or 10)
+            sniper_delay = float(bot.get('config_sniper_delay', 1.5) or 1.5)
+            
+            cmd = [
+                '/var/www/vhosts/territoriodrasanvicr.com/b/venv/bin/python',
+                'hosting_sniper.py',
+                '--bot-id', str(bot_id),
+                '--api-key', self.api_key,
+                '--country', sniper_country,
+                '--max-cities', str(sniper_max_cities),
+                '--searches-per-run', str(sniper_searches),
+                '--delay', str(sniper_delay)
+            ]
+            if sniper_niches:
+                cmd.extend(['--niches', sniper_niches])
+            if target_list_id:
+                cmd.extend(['--list-id', str(target_list_id)])
+        
         # Solo añadir list-id si no es SAP ni Geographic (obtienen de su config)
-        if target_list_id and subcommand not in ('sap', 'sap_sl', 'geographic', 'bcorp'):
+        if target_list_id and subcommand not in ('sap', 'sap_sl', 'geographic', 'bcorp', 'sniper'):
             cmd.extend(['--list-id', str(target_list_id)])
         
         # Validar que se creó un comando
