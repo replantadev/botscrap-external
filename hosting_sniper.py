@@ -42,6 +42,33 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ─── Config ───────────────────────────────────────────────────────────
 STAFFKIT_URL = os.getenv('STAFFKIT_URL', 'https://staff.replanta.dev')
 
+# Score mínimo para importar un lead (0-100)
+MIN_IMPORT_SCORE = 50
+
+# TLDs de dominios gubernamentales/educativos/sin ánimo de lucro → no son clientes
+BLACKLIST_TLDS = {
+    '.gov', '.gob', '.edu', '.mil', '.org', '.int',
+    '.gov.co', '.gov.mx', '.gob.mx', '.gob.ar', '.gob.cl', '.gob.pe',
+    '.edu.co', '.edu.mx', '.edu.ar', '.edu.cl', '.edu.pe', '.edu.es',
+    '.ac.uk', '.gov.uk', '.nhs.uk',
+}
+
+# TLDs por país — si buscamos en CO, un .co.za o .org.uk no tiene sentido
+COUNTRY_TLDS = {
+    'ES': ['.es', '.com', '.net', '.cat', '.eus', '.gal'],
+    'CO': ['.co', '.com.co', '.com', '.net'],
+    'MX': ['.mx', '.com.mx', '.com', '.net'],
+    'AR': ['.ar', '.com.ar', '.com', '.net'],
+    'CL': ['.cl', '.com', '.net'],
+    'PE': ['.pe', '.com.pe', '.com', '.net'],
+    'EC': ['.ec', '.com.ec', '.com', '.net'],
+    'UY': ['.uy', '.com.uy', '.com', '.net'],
+    'CR': ['.cr', '.co.cr', '.com', '.net'],
+    'PA': ['.pa', '.com.pa', '.com', '.net'],
+    'BO': ['.bo', '.com.bo', '.com', '.net'],
+    'PY': ['.py', '.com.py', '.com', '.net'],
+}
+
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -367,6 +394,7 @@ class HostingSniper:
     """Busca webs WordPress lentas en hosting caro/malo como leads de migración"""
 
     def __init__(self, api_key: str, list_id: int, bot_id: int = 0,
+                 run_id: int = 0,
                  google_api_key: str = '', google_cx: str = '',
                  niches: List[str] = None,
                  country: str = 'ES',
@@ -379,6 +407,7 @@ class HostingSniper:
         self.api_key = api_key
         self.list_id = list_id
         self.bot_id = bot_id
+        self.run_id = run_id
         self.google_api_key = google_api_key
         self.google_cx = google_cx
         self.niches = niches or DEFAULT_NICHES_ES[:5]
@@ -496,6 +525,9 @@ class HostingSniper:
                                 'paginasamarillas', 'yellowpages', 'wikipedia.org', 'tiktok.com',
                                 'x.com', 'whatsapp.com', 'pinterest.com']
                         if not any(s in domain for s in skip) and domain not in self.seen_domains:
+                            # Filtrar dominios gubernamentales/educativos
+                            if self._is_blacklisted_domain(domain):
+                                continue
                             self.seen_domains.add(domain)
                             urls.append(f'https://{domain}')
 
@@ -510,6 +542,31 @@ class HostingSniper:
 
         self.stats['searches_done'] += 1
         return urls
+
+    def _is_blacklisted_domain(self, domain: str) -> bool:
+        """Filtra dominios .gov, .edu, .org y TLDs fuera del país objetivo"""
+        domain_lower = domain.lower()
+        
+        # 1. Blacklist por TLD institucional
+        for tld in BLACKLIST_TLDS:
+            if domain_lower.endswith(tld):
+                return True
+        
+        # 2. Filtro geográfico: si busco en CO, un .co.za o .de no es relevante
+        allowed_tlds = COUNTRY_TLDS.get(self.country)
+        if allowed_tlds:
+            # Si el dominio tiene TLD de país diferente, descartarlo
+            foreign_country_tlds = [
+                '.es', '.mx', '.ar', '.cl', '.pe', '.co', '.ec', '.uy', '.cr',
+                '.pa', '.bo', '.py', '.br', '.pt', '.fr', '.de', '.it', '.uk',
+                '.nl', '.be', '.at', '.ch', '.pl', '.cz', '.ru', '.cn', '.jp',
+                '.kr', '.in', '.au', '.nz', '.za', '.ng', '.ke', '.eg',
+            ]
+            for tld in foreign_country_tlds:
+                if domain_lower.endswith(tld) and tld not in allowed_tlds:
+                    return True
+        
+        return False
 
     # ─── FASE 2: ANÁLISIS TÉCNICO ─────────────────────────────────────
 
@@ -905,7 +962,7 @@ class HostingSniper:
                     'action': 'save_lead',
                     'list_id': self.list_id,
                     'bot_id': self.bot_id,
-                    'run_id': 0,
+                    'run_id': self.run_id,
                     'lead_data': json.dumps(lead_data),
                 },
                 headers={'Authorization': f'Bearer {self.api_key}'},
@@ -979,8 +1036,8 @@ class HostingSniper:
                     try:
                         analysis = future.result()
                         if analysis and analysis['sniper_score'] > 0:
-                            # Fase 3: Import
-                            if analysis['sniper_score'] >= 30:  # Solo leads con potencial
+                            # Fase 3: Import — solo leads con score suficiente
+                            if analysis['sniper_score'] >= MIN_IMPORT_SCORE:
                                 self.import_lead(analysis, niche, city)
 
                             emoji = '🔥' if analysis['sniper_score'] >= 60 else '⚡' if analysis['sniper_score'] >= 40 else '💤'
@@ -1090,6 +1147,7 @@ def main():
     parser.add_argument('--max-cities', type=int, default=50, help='Máx ciudades por país')
     parser.add_argument('--searches-per-run', type=int, default=10, help='Búsquedas por ejecución')
     parser.add_argument('--delay', type=float, default=1.5, help='Delay entre búsquedas (seg)')
+    parser.add_argument('--run-id', type=int, default=0, help='ID de la ejecución (bot_runs.id) para trazar source_run_id')
     parser.add_argument('--dry-run', action='store_true', help='Solo analizar, no importar')
     parser.add_argument('--verbose', action='store_true', help='Modo verbose')
 
@@ -1161,6 +1219,7 @@ def main():
         api_key=args.api_key,
         list_id=list_id,
         bot_id=args.bot_id,
+        run_id=args.run_id,
         google_api_key=google_key,
         google_cx=google_cx,
         niches=niches,
