@@ -34,6 +34,8 @@ import re
 import ssl
 import socket
 import random
+import signal
+import threading
 from datetime import datetime
 from typing import Optional, Dict, List, Set, Tuple
 from urllib.parse import urlparse
@@ -41,6 +43,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ─── Config ───────────────────────────────────────────────────────────
 STAFFKIT_URL = os.getenv('STAFFKIT_URL', 'https://staff.replanta.dev')
+
+# Timeout global: max 90 minutos de ejecución (auto-kill es a 120 min)
+MAX_RUNTIME_SECONDS = 90 * 60
 
 # Score mínimo para importar un lead (0-100)
 MIN_IMPORT_SCORE = 50
@@ -807,7 +812,7 @@ class HostingSniper:
                     'strategy': 'mobile',
                     'category': 'performance',
                 },
-                timeout=60
+                timeout=30
             )
             self.stats['pagespeed_calls'] += 1
 
@@ -1016,6 +1021,12 @@ class HostingSniper:
 
         # Procesar cada búsqueda
         for i, (niche, city) in enumerate(searches):
+            # *** GLOBAL TIMEOUT CHECK ***
+            elapsed = (datetime.now() - start).total_seconds()
+            if elapsed > MAX_RUNTIME_SECONDS:
+                self.log(f"\n⏰ TIMEOUT GLOBAL: {elapsed/60:.0f} min alcanzado (máx {MAX_RUNTIME_SECONDS/60:.0f} min). Terminando limpiamente.")
+                break
+            
             self.log(f"\n🔍 [{i+1}/{len(searches)}] Buscando: '{niche}' en {city}")
 
             # Fase 1: Discovery
@@ -1231,13 +1242,18 @@ def main():
         verbose=args.verbose,
     )
 
-    stats = sniper.run()
+    stats = {}
+    try:
+        stats = sniper.run()
+    except Exception as e:
+        print(f"[FATAL] Hosting Sniper crashed: {e}")
+        stats = sniper.stats if hasattr(sniper, 'stats') else {}
+    finally:
+        # SIEMPRE reportar fin, incluso en crash/timeout
+        if args.bot_id:
+            report_run(args.api_key, args.bot_id, 'end_run', stats)
 
-    # Reportar fin al daemon
-    if args.bot_id:
-        report_run(args.api_key, args.bot_id, 'end_run', stats)
-
-    sys.exit(1 if len(stats.get('errors', [])) > stats['leads_imported'] else 0)
+    sys.exit(1 if len(stats.get('errors', [])) > stats.get('leads_imported', 0) else 0)
 
 
 if __name__ == '__main__':
